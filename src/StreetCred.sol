@@ -28,24 +28,24 @@ error DifferentTypes();
 error NotStarted();
 error OwnerMaxMintReached();
 
+enum TokenType {
+    RespectSeeker,
+    StreetHustler,
+    UrbanLegend
+}
+
+struct TokenInfo {
+    TokenType tokenType;
+    address homie1;
+    address homie2;
+    uint256 timestamp;
+    uint256 health;
+}
+
 contract StreetCred is Ownable, ERC721 {
     using EnumerableSet for EnumerableSet.UintSet;
     using ECDSA for bytes32;
     using Strings for uint256;
-
-    enum TokenType {
-        RespectSeeker,
-        StreetHustler,
-        UrbanLegend
-    }
-
-    struct TokenInfo {
-        TokenType tokenType;
-        address homie1;
-        address homie2;
-        uint256 timestamp;
-        uint256 health;
-    }
 
     uint8 MAX_HEALTH = 4;
     uint8 MAX_OWNER_TOKENS_PER_TYPE = 10;
