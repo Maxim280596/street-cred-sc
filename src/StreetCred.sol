@@ -18,9 +18,20 @@ error InsufficienUSD();
 error InsufficientTokens();
 error Incest();
 
+error SignatureExpired();
+error InvalidOrder();
+error CodePhraseUsed();
+error InvalidSigner(address signer, address owner);
+error Cheat();
+error InsufficientHealth();
+error DifferentTypes();
+error NotStarted();
+error OwnerMaxMintReached();
+
 contract StreetCred is Ownable, ERC721 {
     using EnumerableSet for EnumerableSet.UintSet;
     using ECDSA for bytes32;
+    using Strings for uint256;
 
     enum TokenType {
         RespectSeeker,
@@ -36,6 +47,9 @@ contract StreetCred is Ownable, ERC721 {
         uint256 health;
     }
 
+    uint8 MAX_HEALTH = 4;
+    uint8 MAX_OWNER_TOKENS_PER_TYPE = 10;
+
     bytes32 public constant MINT_TYPEHASH =
         keccak256(
             "MintData(uint256 tokenId1,uint256 tokenId2,string codePhrase,uint256 deadline)"
@@ -43,17 +57,16 @@ contract StreetCred is Ownable, ERC721 {
 
     /// @notice domain separator for EIP712
     bytes32 public immutable domainSeparator;
-
     address public hustleMarket;
     string private baseURI;
     uint256 private _nextTokenId;
 
+    mapping(TokenType => uint256) public ownerMintCount;
+    mapping(bytes32 => mapping(string => bool)) public usedCodePhrases; // key -> codePhrase -> bool
     mapping(uint256 => TokenInfo) private tokenInfos; // tokenId -> TokenInfo
-    mapping(bytes32 => mapping(string => bool)) public usedCodePhrases;
 
     mapping(address => mapping(TokenType => EnumerableSet.UintSet))
         private ownedTokens; //address -> (TokenType -> tokenId)
-
     mapping(bytes32 => EnumerableSet.UintSet) private meets; // address1, address2 -> tokenId
 
     constructor(
@@ -90,19 +103,11 @@ contract StreetCred is Ownable, ERC721 {
         return ownedTokens[user][_type].length();
     }
 
-    function getMeetNft(
+    function getCreatedNft(
         bytes32 key,
         uint256 index
     ) public view returns (uint256) {
         return meets[key].at(index);
-    }
-
-    function maxTokenHealth() public pure returns (uint256) {
-        return 4;
-    }
-
-    function tokenHealth(uint256 tokenId) public view returns (uint256) {
-        return tokenInfos[tokenId].health;
     }
 
     function getNftTypeById(uint256 tokenId) public view returns (TokenType) {
@@ -131,12 +136,19 @@ contract StreetCred is Ownable, ERC721 {
             ownedTokens[user][_type].at(ownedTokens[user][_type].length() - 1);
     }
 
-    function sortTokens(
-        uint256 tokenId1,
-        uint256 tokenId2
-    ) public pure returns (uint256, uint256) {
-        return
-            tokenId1 < tokenId2 ? (tokenId1, tokenId2) : (tokenId2, tokenId1);
+    function userTokensByType(
+        address user,
+        TokenType _type
+    ) public view returns (uint256[] memory) {
+        uint256[] memory tokens = new uint256[](balanceOfType(user, _type));
+        for (uint256 i = 0; i < tokens.length; i++) {
+            tokens[i] = tokenOfOwnerTypeAndIndex(user, _type, i);
+        }
+        return tokens;
+    }
+
+    function isActive(uint256 tokenId) public view returns (bool) {
+        return tokenInfos[tokenId].health > 0;
     }
 
     function mintStreetSoul(
@@ -147,9 +159,10 @@ contract StreetCred is Ownable, ERC721 {
         bytes memory signature1,
         bytes memory signature2
     ) external {
-        // Перевірка дедлайну
-        require(block.timestamp <= deadline, "Signature expired");
-        require(tokenId1 < tokenId2, "Invalid token order");
+        require(hustleMarket != address(0), NotStarted());
+        require(block.timestamp <= deadline, SignatureExpired());
+        require(tokenId1 < tokenId2, InvalidOrder());
+        address sender = msg.sender;
 
         bytes32 structHash = keccak256(
             abi.encode(
@@ -168,23 +181,18 @@ contract StreetCred is Ownable, ERC721 {
         address signer1 = digest.recover(signature1);
         address signer2 = digest.recover(signature2);
         bytes32 key = generateKey(tokenId1, tokenId2);
-        require(
-            msg.sender == signer1 || msg.sender == signer2,
-            InvalidAddress()
-        );
+        require(sender == signer1 || sender == signer2, InvalidAddress());
 
-        require(
-            !usedCodePhrases[key][codePhrase],
-            "Code phrase already used for this pair"
-        );
-
+        require(!usedCodePhrases[key][codePhrase], CodePhraseUsed());
         usedCodePhrases[key][codePhrase] = true;
-        require(ownerOf(tokenId1) == signer1, "Invalid signature for token 1");
-        require(ownerOf(tokenId2) == signer2, "Invalid signature for token 2");
-        require(signer1 != signer2, "Same signer for both tokens");
+        address owner1 = ownerOf(tokenId1);
+        address owner2 = ownerOf(tokenId2);
 
-        // Створюємо нову NFT
-        // _mintNewNFT(tokenId1, tokenId2);
+        require(owner1 == signer1, InvalidSigner(signer1, owner1));
+        require(owner2 == signer2, InvalidSigner(signer2, owner2));
+        require(signer1 != signer2, Cheat());
+
+        _mintStreetSoul(tokenId1, tokenId2, signer1, signer2, key);
     }
 
     function _mintStreetSoul(
@@ -196,14 +204,15 @@ contract StreetCred is Ownable, ERC721 {
     ) internal {
         uint256 tokenId = ++_nextTokenId;
 
-        if (
-            tokenInfos[tokenId1].health == 0 || tokenInfos[tokenId2].health == 0
-        ) revert InsufficientTokens();
+        require(
+            tokenInfos[tokenId1].health > 0 && tokenInfos[tokenId2].health > 0,
+            InsufficientHealth()
+        );
 
         TokenType type1 = tokenInfos[tokenId1].tokenType;
         TokenType type2 = tokenInfos[tokenId2].tokenType;
-        if (type1 != type2) revert InvalidAddress();
-        if (vibeCount(key) > 0) revert AlreadyMeet();
+        require(type1 == type2, DifferentTypes());
+        require(vibeCount(key) == 0, AlreadyMeet());
 
         meets[key].add(tokenId);
         tokenInfos[tokenId1].health--;
@@ -214,7 +223,7 @@ contract StreetCred is Ownable, ERC721 {
             homie1,
             homie2,
             block.timestamp,
-            maxTokenHealth()
+            MAX_HEALTH
         );
 
         _safeMint(hustleMarket, tokenId);
@@ -224,70 +233,24 @@ contract StreetCred is Ownable, ERC721 {
         hustleMarket = _hustleMarket;
     }
 
-    // function mint(
-    //     address _to,
-    //     TokenType _type,
-    //     address parent1,
-    //     address parent2
-    // ) public onlyOwner {
-    //     (address a1, address a2) = parent1 < parent2
-    //         ? (parent1, parent2)
-    //         : (parent2, parent1);
-    //     uint256 tokenId = ++_nextTokenId;
-
-    //     if (!(parent1 == address(0) && parent2 == address(0))) {
-    //         bytes32 key = generateKey(a1, a2);
-
-    //         if (usersVibeCount(key) > 0) revert AlreadyMeet();
-    //         if (address(this) == _to || parent1 == parent2)
-    //             revert InvalidAddress();
-
-    //         if (balanceOfType(parent1, _type) == 0) revert NotOwner(parent1);
-    //         if (balanceOfType(parent2, _type) == 0) revert NotOwner(parent2);
-
-    //         uint256 tokenId1 = tokenOfOwnerTypeLast(parent1, _type);
-    //         uint256 tokenId2 = tokenOfOwnerTypeLast(parent2, _type);
-
-    //         if (
-    //             tokenInfos[tokenId1].health <= 0 ||
-    //             tokenInfos[tokenId2].health <= 0
-    //         ) revert InsufficientTokens();
-
-    //         if (_ownerOf(tokenId1) == tokenInfos[tokenId2].homie1)
-    //             revert Incest();
-    //         if (_ownerOf(tokenId1) == tokenInfos[tokenId2].homie2)
-    //             revert Incest();
-    //         if (_ownerOf(tokenId2) == tokenInfos[tokenId1].homie1)
-    //             revert Incest();
-    //         if (_ownerOf(tokenId2) == tokenInfos[tokenId1].homie2)
-    //             revert Incest();
-
-    //         meets[key].add(tokenId);
-    //     }
-
-    //     tokenInfos[tokenId] = TokenInfo(
-    //         _type,
-    //         a1,
-    //         a2,
-    //         block.timestamp,
-    //         maxTokenHealth()
-    //     );
-    //     _safeMint(_to, tokenId);
-    // }
-
-    // function mintBatch(
-    //     address[] calldata _tos,
-    //     TokenType[] calldata _types,
-    //     uint16[] calldata _counts
-    // ) external onlyOwner {
-    //     if (_tos.length != _types.length || _tos.length != _counts.length)
-    //         revert ArraysLengthsNotMatch();
-    //     for (uint16 i = 0; i < _tos.length; i++) {
-    //         for (uint16 j = 0; j < _counts[i]; j++) {
-    //             mint(_tos[i], _types[i], address(0), address(0));
-    //         }
-    //     }
-    // }
+    function ownerMintStreetSoul(TokenType _type) external onlyOwner {
+        address hustleMarketCached = hustleMarket;
+        require(
+            ownerMintCount[_type] < MAX_OWNER_TOKENS_PER_TYPE,
+            OwnerMaxMintReached()
+        );
+        require(hustleMarketCached != address(0), NotStarted());
+        uint256 tokenId = ++_nextTokenId;
+        tokenInfos[tokenId] = TokenInfo(
+            _type,
+            address(0),
+            address(0),
+            block.timestamp,
+            MAX_HEALTH
+        );
+        ownerMintCount[_type]++;
+        _safeMint(hustleMarketCached, tokenId);
+    }
 
     function setBaseURI(string calldata _newBaseURI) external onlyOwner {
         baseURI = _newBaseURI;
@@ -300,19 +263,16 @@ contract StreetCred is Ownable, ERC721 {
     function tokenURI(
         uint256 tokenId
     ) public view override returns (string memory) {
-        // if (_ownerOf(tokenId) == address(0)) revert TokenNotExist();
-        // string memory _tokenBaseURI = _baseURI();
-        // return
-        //     bytes(_tokenBaseURI).length > 0
-        //         ? string(
-        //             abi.encodePacked(
-        //                 _tokenBaseURI,
-        //                 tokenId.toString(),
-        //                 "/",
-        //                 uint256(tokenInfos[tokenId].tokenType).toString()
-        //             )
-        //         )
-        //         : "";
+        require(_ownerOf(tokenId) != address(0), TokenNotExist());
+        string memory _tokenBaseURI = _baseURI();
+        return
+            bytes(baseURI).length > 0
+                ? string.concat(
+                    _tokenBaseURI,
+                    uint256(tokenInfos[tokenId].tokenType).toString(),
+                    ".json"
+                )
+                : "";
     }
 
     function _update(
@@ -331,47 +291,4 @@ contract StreetCred is Ownable, ERC721 {
             return super._update(to, tokenId, auth);
         }
     }
-
-    // receive() external payable {}
-
-    // function withdraw(
-    //     address tokenAddress,
-    //     address to,
-    //     uint256 amount
-    // ) public onlyOwner {
-    //     if (tokenAddress == address(0)) {
-    //         if (address(this).balance < amount) revert InsufficientEth();
-    //         payable(to).transfer(amount);
-    //     } else {
-    //         IERC20 token = IERC20(tokenAddress);
-    //         if (token.balanceOf(address(this)) < amount)
-    //             revert InsufficienUSD();
-    //         token.transfer(to, amount);
-    //     }
-    // }
-
-    // function burn(uint256 tokenId) external {
-    //     _update(address(0), tokenId, msg.sender);
-    // }
-
-    // function burnAndRollback(uint256 tokenId) external {
-    //     if (
-    //         tokenInfos[tokenId].homie1 != address(0) &&
-    //         tokenInfos[tokenId].health > 0
-    //     ) {
-    //         uint256 t1 = tokenOfOwnerTypeLast(
-    //             tokenInfos[tokenId].homie1,
-    //             tokenInfos[tokenId].tokenType
-    //         );
-    //         uint256 t2 = tokenOfOwnerTypeLast(
-    //             tokenInfos[tokenId].homie2,
-    //             tokenInfos[tokenId].tokenType
-    //         );
-
-    //         tokenInfos[t1].health++;
-    //         tokenInfos[t2].health++;
-    //     }
-
-    //     _update(address(0), tokenId, msg.sender);
-    // }
 }
