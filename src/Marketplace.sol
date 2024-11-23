@@ -11,6 +11,7 @@ import {TokenType, TokenInfo, StreetCred} from "./StreetCred.sol";
 error ZeroAddress();
 error InvalidTokenType();
 error InvalidTokenPrice();
+error ForbiddenSender();
 
 struct User {
     address ref;
@@ -33,9 +34,29 @@ contract Marketplace is Ownable {
     StreetCred public immutable streetCred;
     address public immutable usdToken;
 
+    uint256 public totalUsdInGame;
+    uint256 public totalUsers;
+
     mapping(TokenType => EnumerableSet.UintSet) internal queues;
     mapping(TokenType => uint256) public tokenPrice;
     mapping(address => User) public users;
+
+    event Buy(
+        address indexed user,
+        TokenType tokenType,
+        uint256 tokenId,
+        uint256 price,
+        address indexed homie1,
+        address indexed homie2
+    );
+
+    event Sell(
+        address indexed homie1,
+        address indexed homie2,
+        TokenType tokenType,
+        uint256 tokenId,
+        uint256 price
+    );
 
     constructor(
         address _initialOwner,
@@ -60,13 +81,16 @@ contract Marketplace is Ownable {
 
     function sell(uint256 tokenId) internal {
         TokenType tokenType = streetCred.getNftTypeById(tokenId);
+        (address homie1, address homie2) = _getHomies(tokenId);
         queues[tokenType].add(tokenId);
+        emit Sell(homie1, homie2, tokenType, tokenId, tokenPrice[tokenType]);
     }
 
     function buy(TokenType tokenType, address ref) external {
         require(tokenPrice[tokenType] > 0, InvalidTokenType());
         require(queues[tokenType].length() > 0, "No tokens in queue");
         require(users[ref].connectionTimestamp > 0, "Invalid referrer");
+        require(ref != msg.sender, "Can't refer yourself");
         uint256 price = tokenPrice[tokenType];
         address user = msg.sender;
         address owner = owner();
@@ -86,6 +110,7 @@ contract Marketplace is Ownable {
         users[referrer].refEarnings += refFee;
 
         users[user].spentInGame += price;
+        totalUsdInGame += price;
 
         IERC20(usdToken).safeTransferFrom(user, address(this), price);
         IERC20(usdToken).safeTransfer(owner, projectFee);
@@ -94,6 +119,7 @@ contract Marketplace is Ownable {
         IERC20(usdToken).safeTransfer(referrer, refFee);
 
         streetCred.safeTransferFrom(address(this), user, tokenId);
+        emit Buy(user, tokenType, tokenId, price, homie1, homie2);
     }
 
     function getQueueLength(
@@ -123,6 +149,7 @@ contract Marketplace is Ownable {
                 users[user].ref = owner();
             }
             users[user].connectionTimestamp = block.timestamp;
+            totalUsers++;
         }
     }
 
@@ -158,7 +185,7 @@ contract Marketplace is Ownable {
             sell(tokenId);
             return this.onERC721Received.selector;
         } else {
-            revert("Only StreetCred can send tokens");
+            revert ForbiddenSender();
         }
     }
 }
