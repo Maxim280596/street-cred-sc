@@ -8,26 +8,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-error InvalidAddress();
-error AlreadyMeet();
-error NotOwner(address user);
-error ArraysLengthsNotMatch();
-error TokenNotExist();
-error InsufficientEth();
-error InsufficienUSD();
-error InsufficientTokens();
-error Incest();
-
-error SignatureExpired();
-error InvalidOrder();
-error CodePhraseUsed();
-error InvalidSigner(address signer, address owner);
-error Cheat();
-error InsufficientHealth();
-error DifferentTypes();
-error NotStarted();
-error OwnerMaxMintReached();
-
 enum TokenType {
     RespectSeeker,
     StreetHustler,
@@ -47,8 +27,8 @@ contract StreetCred is Ownable, ERC721 {
     using ECDSA for bytes32;
     using Strings for uint256;
 
-    uint8 MAX_HEALTH = 4;
-    uint8 MAX_OWNER_TOKENS_PER_TYPE = 10;
+    uint8 public constant MAX_HEALTH = 4;
+    uint8 public constant MAX_OWNER_TOKENS_PER_TYPE = 10;
 
     bytes32 public constant MINT_TYPEHASH =
         keccak256(
@@ -58,7 +38,7 @@ contract StreetCred is Ownable, ERC721 {
     /// @notice domain separator for EIP712
     bytes32 public immutable domainSeparator;
     address public hustleMarket;
-    string private baseURI;
+    string public baseURI;
     uint256 private _nextTokenId;
 
     mapping(TokenType => uint256) public ownerMintCount;
@@ -68,6 +48,22 @@ contract StreetCred is Ownable, ERC721 {
     mapping(address => mapping(TokenType => EnumerableSet.UintSet))
         private ownedTokens; //address -> (TokenType -> tokenId)
     mapping(bytes32 => EnumerableSet.UintSet) private meets; // address1, address2 -> tokenId
+
+    error InvalidAddress();
+    error AlreadyMeet();
+    error TokenNotExist();
+    error SignatureExpired();
+    error InvalidOrder();
+    error CodePhraseUsed();
+    error InvalidSigner(address signer, address owner);
+    error Cheat();
+    error InsufficientHealth();
+    error DifferentTypes();
+    error NotStarted();
+    error OwnerMaxMintReached();
+
+    event SetHustleMarket(address hustleMarket);
+    event SetBaseURI(string baseURI);
 
     constructor(
         address _owner
@@ -85,71 +81,7 @@ contract StreetCred is Ownable, ERC721 {
         );
     }
 
-    function vibeCount(bytes32 key) public view returns (uint256) {
-        return meets[key].length();
-    }
-
-    function generateKey(
-        uint256 tokenId1,
-        uint256 tokenId2
-    ) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(tokenId1, tokenId2));
-    }
-
-    function balanceOfType(
-        address user,
-        TokenType _type
-    ) public view returns (uint256) {
-        return ownedTokens[user][_type].length();
-    }
-
-    function getCreatedNft(
-        bytes32 key,
-        uint256 index
-    ) public view returns (uint256) {
-        return meets[key].at(index);
-    }
-
-    function getNftTypeById(uint256 tokenId) public view returns (TokenType) {
-        return tokenInfos[tokenId].tokenType;
-    }
-
-    function getTokenInfo(
-        uint256 tokenId
-    ) external view returns (TokenInfo memory) {
-        return tokenInfos[tokenId];
-    }
-
-    function tokenOfOwnerTypeAndIndex(
-        address user,
-        TokenType _type,
-        uint256 index
-    ) public view returns (uint256) {
-        return ownedTokens[user][_type].at(index);
-    }
-
-    function tokenOfOwnerTypeLast(
-        address user,
-        TokenType _type
-    ) public view returns (uint256) {
-        return
-            ownedTokens[user][_type].at(ownedTokens[user][_type].length() - 1);
-    }
-
-    function userTokensByType(
-        address user,
-        TokenType _type
-    ) public view returns (uint256[] memory) {
-        uint256[] memory tokens = new uint256[](balanceOfType(user, _type));
-        for (uint256 i = 0; i < tokens.length; i++) {
-            tokens[i] = tokenOfOwnerTypeAndIndex(user, _type, i);
-        }
-        return tokens;
-    }
-
-    function isActive(uint256 tokenId) public view returns (bool) {
-        return tokenInfos[tokenId].health > 0;
-    }
+    /// ==================================== External ====================================
 
     function mintStreetSoul(
         uint256 tokenId1,
@@ -195,6 +127,120 @@ contract StreetCred is Ownable, ERC721 {
         _mintStreetSoul(tokenId1, tokenId2, signer1, signer2, key);
     }
 
+    function ownerMintStreetSoul(TokenType _type) external onlyOwner {
+        address hustleMarketCached = hustleMarket;
+        require(
+            ownerMintCount[_type] < MAX_OWNER_TOKENS_PER_TYPE,
+            OwnerMaxMintReached()
+        );
+        require(hustleMarketCached != address(0), NotStarted());
+        uint256 tokenId = ++_nextTokenId;
+        tokenInfos[tokenId] = TokenInfo(
+            _type,
+            address(0),
+            address(0),
+            block.timestamp,
+            MAX_HEALTH
+        );
+        ownerMintCount[_type]++;
+        _safeMint(hustleMarketCached, tokenId);
+    }
+
+    function setHustleMarket(address _hustleMarket) external onlyOwner {
+        hustleMarket = _hustleMarket;
+        emit SetHustleMarket(_hustleMarket);
+    }
+
+    function setBaseURI(string calldata _newBaseURI) external onlyOwner {
+        baseURI = _newBaseURI;
+        emit SetBaseURI(_newBaseURI);
+    }
+
+    /// ==================================== Public ====================================
+
+    function getTokenInfo(
+        uint256 tokenId
+    ) external view returns (TokenInfo memory) {
+        return tokenInfos[tokenId];
+    }
+
+    function vibeCount(bytes32 key) public view returns (uint256) {
+        return meets[key].length();
+    }
+
+    function balanceOfType(
+        address user,
+        TokenType _type
+    ) public view returns (uint256) {
+        return ownedTokens[user][_type].length();
+    }
+
+    function getCreatedNft(
+        bytes32 key,
+        uint256 index
+    ) public view returns (uint256) {
+        return meets[key].at(index);
+    }
+
+    function getNftTypeById(uint256 tokenId) public view returns (TokenType) {
+        return tokenInfos[tokenId].tokenType;
+    }
+
+    function tokenOfOwnerTypeAndIndex(
+        address user,
+        TokenType _type,
+        uint256 index
+    ) public view returns (uint256) {
+        return ownedTokens[user][_type].at(index);
+    }
+
+    function tokenOfOwnerTypeLast(
+        address user,
+        TokenType _type
+    ) public view returns (uint256) {
+        return
+            ownedTokens[user][_type].at(ownedTokens[user][_type].length() - 1);
+    }
+
+    function userTokensByType(
+        address user,
+        TokenType _type
+    ) public view returns (uint256[] memory) {
+        uint256[] memory tokens = new uint256[](balanceOfType(user, _type));
+        for (uint256 i = 0; i < tokens.length; i++) {
+            tokens[i] = tokenOfOwnerTypeAndIndex(user, _type, i);
+        }
+        return tokens;
+    }
+
+    function isActive(uint256 tokenId) public view returns (bool) {
+        return tokenInfos[tokenId].health > 0;
+    }
+
+    function tokenURI(
+        uint256 tokenId
+    ) public view override returns (string memory) {
+        require(_ownerOf(tokenId) != address(0), TokenNotExist());
+        string memory _tokenBaseURI = _baseURI();
+        return
+            bytes(baseURI).length > 0
+                ? string.concat(
+                    _tokenBaseURI,
+                    uint256(tokenInfos[tokenId].tokenType).toString(),
+                    ".json"
+                )
+                : "";
+    }
+
+    function generateKey(
+        uint256 tokenId1,
+        uint256 tokenId2
+    ) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(tokenId1, tokenId2));
+    }
+
+    /// ==================================== Internal ====================================
+
     function _mintStreetSoul(
         uint256 tokenId1,
         uint256 tokenId2,
@@ -229,50 +275,8 @@ contract StreetCred is Ownable, ERC721 {
         _safeMint(hustleMarket, tokenId);
     }
 
-    function setHustleMarket(address _hustleMarket) external onlyOwner {
-        hustleMarket = _hustleMarket;
-    }
-
-    function ownerMintStreetSoul(TokenType _type) external onlyOwner {
-        address hustleMarketCached = hustleMarket;
-        require(
-            ownerMintCount[_type] < MAX_OWNER_TOKENS_PER_TYPE,
-            OwnerMaxMintReached()
-        );
-        require(hustleMarketCached != address(0), NotStarted());
-        uint256 tokenId = ++_nextTokenId;
-        tokenInfos[tokenId] = TokenInfo(
-            _type,
-            address(0),
-            address(0),
-            block.timestamp,
-            MAX_HEALTH
-        );
-        ownerMintCount[_type]++;
-        _safeMint(hustleMarketCached, tokenId);
-    }
-
-    function setBaseURI(string calldata _newBaseURI) external onlyOwner {
-        baseURI = _newBaseURI;
-    }
-
     function _baseURI() internal view override returns (string memory) {
         return baseURI;
-    }
-
-    function tokenURI(
-        uint256 tokenId
-    ) public view override returns (string memory) {
-        require(_ownerOf(tokenId) != address(0), TokenNotExist());
-        string memory _tokenBaseURI = _baseURI();
-        return
-            bytes(baseURI).length > 0
-                ? string.concat(
-                    _tokenBaseURI,
-                    uint256(tokenInfos[tokenId].tokenType).toString(),
-                    ".json"
-                )
-                : "";
     }
 
     function _update(
