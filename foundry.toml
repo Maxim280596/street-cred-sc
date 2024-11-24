@@ -4,3 +4,4 @@ runs = 10_000
 remappings = [
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
 ]
+unchecked_cheatcode_artifacts = true

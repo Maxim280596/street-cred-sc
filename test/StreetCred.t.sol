@@ -6,8 +6,10 @@ import {Test, console} from "forge-std/Test.sol";
 import {StreetCred, TokenType, TokenInfo} from "src/StreetCred.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {TestUsdc} from "test/TestUsdc.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract StreetCredTest is Test {
+    using ECDSA for bytes32;
     StreetCred collection;
     TestUsdc usdc;
     address public owner = makeAddr("owner");
@@ -15,6 +17,7 @@ contract StreetCredTest is Test {
     address public user2 = makeAddr("user2");
     address public user3 = makeAddr("user3");
     address public user4 = makeAddr("user4");
+
     address public marketplace = makeAddr("marketplace");
 
     /// "ddsdds"
@@ -126,6 +129,73 @@ contract StreetCredTest is Test {
             )
         );
         collection.setBaseURI("https://example.com/");
+    }
+
+    function test_mintStreetSoul_Success() public {
+        (address testUser1, uint256 user1Pk) = makeAddrAndKey("testUser1");
+        (address testUser2, uint256 user2Pk) = makeAddrAndKey("testUser2");
+
+        collection.setHustleMarket(marketplace);
+        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+
+        uint256[] memory marketplaceTokens = collection.userTokensByType(
+            marketplace,
+            TokenType.RespectSeeker
+        );
+        uint256 tokenId1 = marketplaceTokens[0];
+        uint256 tokenId2 = marketplaceTokens[1];
+        console.log("tokenId1", tokenId1);
+        console.log("tokenId2", tokenId2);
+        string memory codePhrase = "hello";
+        bytes32 domainSeparator = collection.domainSeparator();
+
+        _changePrank(marketplace);
+        collection.safeTransferFrom(marketplace, testUser1, tokenId1);
+        collection.safeTransferFrom(marketplace, testUser2, tokenId2);
+
+        /// sign
+        bytes32 structHash = keccak256(
+            abi.encode(
+                collection.MINT_TYPEHASH(),
+                tokenId1,
+                tokenId2,
+                keccak256(bytes(codePhrase)),
+                block.timestamp + 1000
+            )
+        );
+
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+        bytes memory signature2 = _signMint(testUser2, user2Pk, digest);
+
+        _changePrank(testUser1);
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            block.timestamp + 1000,
+            signature1,
+            signature2
+        );
+
+        assertEq(
+            collection.balanceOfType(marketplace, TokenType.RespectSeeker),
+            1
+        );
+    }
+
+    function _signMint(
+        address _user,
+        uint256 _userPk,
+        bytes32 _digest
+    ) internal returns (bytes memory signature) {
+        _changePrank(_user);
+        console.log("user", _user);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(_userPk, _digest);
+        signature = abi.encodePacked(r, s, v);
     }
 
     function _mintAllOwnerNftsAndAssert(TokenType tokenType) internal {
