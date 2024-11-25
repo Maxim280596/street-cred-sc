@@ -22,21 +22,16 @@ contract StreetCredTest is Test {
 
     /// "testUser1"
     address public testUser1;
-    uint256 public user1Pk;
-    /// "testUser2"
     address public testUser2;
-    uint256 public user2Pk;
-    /// "testUser3"
     address public testUser3;
-    uint256 public user3Pk;
-    /// "testUser4"
     address public testUser4;
-    uint256 public user4Pk;
-    /// "testUser5"
     address public testUser5;
-    uint256 public user5Pk;
-    /// "testUser6"
     address public testUser6;
+    uint256 public user1Pk;
+    uint256 public user2Pk;
+    uint256 public user3Pk;
+    uint256 public user4Pk;
+    uint256 public user5Pk;
     uint256 public user6Pk;
 
     /// "ddsdds"
@@ -809,7 +804,6 @@ contract StreetCredTest is Test {
         bytes32 _digest
     ) internal returns (bytes memory signature) {
         _changePrank(_user);
-        console.log("user", _user);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(_userPk, _digest);
         signature = abi.encodePacked(r, s, v);
     }
@@ -831,8 +825,4 @@ contract StreetCredTest is Test {
         skip(seconds_);
         console.log("skipped: ", seconds_);
     }
-
-    // function testOwnerMintStreetSoul() public {
-    //     assertEq(uint256(1), uint256(1), "ok");
-    // }
 }

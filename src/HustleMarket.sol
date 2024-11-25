@@ -1,3 +1,4 @@
+/// SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -8,12 +9,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import {TokenType, TokenInfo, StreetCred} from "./StreetCred.sol";
 
-error ZeroAddress();
-error InvalidTokenType();
-error InvalidTokenPrice();
-error ForbiddenSender();
-
-struct User {
+struct UserInfo {
     address ref;
     uint128 refCount;
     uint256 refEarnings;
@@ -22,7 +18,7 @@ struct User {
     uint256 connectionTimestamp; /// timestamp when user come
 }
 
-contract Marketplace is Ownable {
+contract HustleMarket is Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
     using SafeERC20 for IERC20;
 
@@ -38,8 +34,16 @@ contract Marketplace is Ownable {
     uint256 public totalUsers;
 
     mapping(TokenType => EnumerableSet.UintSet) internal queues;
-    mapping(TokenType => uint256) public tokenPrice;
-    mapping(address => User) public users;
+    mapping(TokenType => uint256) private tokenPrice;
+    mapping(address => UserInfo) private users;
+
+    error ZeroAddress();
+    error InvalidTokenType();
+    error InvalidTokenPrice();
+    error ForbiddenSender();
+    error EmptyQueue();
+    error InvalidRef();
+    error Cheat();
 
     event Buy(
         address indexed user,
@@ -54,8 +58,7 @@ contract Marketplace is Ownable {
         address indexed homie1,
         address indexed homie2,
         TokenType tokenType,
-        uint256 tokenId,
-        uint256 price
+        uint256 tokenId
     );
 
     constructor(
@@ -64,7 +67,6 @@ contract Marketplace is Ownable {
         address _usdToken,
         uint256[] memory _prices
     ) Ownable(_initialOwner) {
-        require(_initialOwner != address(0), ZeroAddress());
         require(_streetCred != address(0), ZeroAddress());
         require(_usdToken != address(0), ZeroAddress());
         streetCred = StreetCred(_streetCred);
@@ -83,14 +85,12 @@ contract Marketplace is Ownable {
         TokenType tokenType = streetCred.getNftTypeById(tokenId);
         (address homie1, address homie2) = _getHomies(tokenId);
         queues[tokenType].add(tokenId);
-        emit Sell(homie1, homie2, tokenType, tokenId, tokenPrice[tokenType]);
+        emit Sell(homie1, homie2, tokenType, tokenId);
     }
 
     function buy(TokenType tokenType, address ref) external {
-        require(tokenPrice[tokenType] > 0, InvalidTokenType());
-        require(queues[tokenType].length() > 0, "No tokens in queue");
-        require(users[ref].connectionTimestamp > 0, "Invalid referrer");
-        require(ref != msg.sender, "Can't refer yourself");
+        require(queues[tokenType].length() > 0, EmptyQueue());
+
         uint256 price = tokenPrice[tokenType];
         address user = msg.sender;
         address owner = owner();
@@ -139,11 +139,17 @@ contract Marketplace is Ownable {
         return tokenPrice[tokenType];
     }
 
+    function getUserInfo(address user) external view returns (UserInfo memory) {
+        return users[user];
+    }
+
     function _setUpRef(address user, address ref) internal {
-        User memory userInfo = users[user];
+        UserInfo memory userInfo = users[user];
         bool isNew = userInfo.connectionTimestamp == 0;
         if (isNew) {
+            require(ref != msg.sender, Cheat());
             if (ref != address(0)) {
+                require(users[ref].connectionTimestamp > 0, InvalidRef());
                 users[user].ref = ref;
             } else {
                 users[user].ref = owner();
@@ -176,12 +182,12 @@ contract Marketplace is Ownable {
     }
 
     function onERC721Received(
-        address operator,
+        address,
         address from,
         uint256 tokenId,
-        bytes calldata data
+        bytes calldata
     ) public returns (bytes4) {
-        if (from == address(streetCred)) {
+        if (from == address(0)) {
             sell(tokenId);
             return this.onERC721Received.selector;
         } else {

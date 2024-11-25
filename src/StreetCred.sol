@@ -87,8 +87,8 @@ contract StreetCred is Ownable, ERC721 {
     function mintStreetSoul(
         uint256 tokenId1,
         uint256 tokenId2,
-        string memory codePhrase, // Використовується для ідентифікації
-        uint256 deadline,
+        string memory codePhrase, // Should be the same for both signatures
+        uint256 deadline, // Should be the same for both signatures
         bytes memory signature1,
         bytes memory signature2
     ) external {
@@ -114,10 +114,12 @@ contract StreetCred is Ownable, ERC721 {
         address signer1 = digest.recover(signature1);
         address signer2 = digest.recover(signature2);
         bytes32 key = generateKey(tokenId1, tokenId2);
-        require(sender == signer1 || sender == signer2, InvalidAddress());
 
+        require(sender == signer1 || sender == signer2, InvalidAddress());
         require(!usedCodePhrases[key][codePhrase], CodePhraseUsed());
+
         usedCodePhrases[key][codePhrase] = true;
+
         address owner1 = ownerOf(tokenId1);
         address owner2 = ownerOf(tokenId2);
 
