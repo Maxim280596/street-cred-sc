@@ -20,11 +20,37 @@ contract StreetCredTest is Test {
 
     address public marketplace = makeAddr("marketplace");
 
+    /// "testUser1"
+    address public testUser1;
+    uint256 public user1Pk;
+    /// "testUser2"
+    address public testUser2;
+    uint256 public user2Pk;
+    /// "testUser3"
+    address public testUser3;
+    uint256 public user3Pk;
+    /// "testUser4"
+    address public testUser4;
+    uint256 public user4Pk;
+    /// "testUser5"
+    address public testUser5;
+    uint256 public user5Pk;
+    /// "testUser6"
+    address public testUser6;
+    uint256 public user6Pk;
+
     /// "ddsdds"
     function setUp() public {
         collection = new StreetCred(owner);
         usdc = new TestUsdc(owner);
         vm.startPrank(owner);
+
+        (testUser1, user1Pk) = makeAddrAndKey("testUser1");
+        (testUser2, user2Pk) = makeAddrAndKey("testUser2");
+        (testUser3, user3Pk) = makeAddrAndKey("testUser3");
+        (testUser4, user4Pk) = makeAddrAndKey("testUser4");
+        (testUser5, user5Pk) = makeAddrAndKey("testUser5");
+        (testUser6, user6Pk) = makeAddrAndKey("testUser6");
     }
 
     function test_SetHustleMarket_Success() public {
@@ -132,27 +158,15 @@ contract StreetCredTest is Test {
     }
 
     function test_mintStreetSoul_Success() public {
-        (address testUser1, uint256 user1Pk) = makeAddrAndKey("testUser1");
-        (address testUser2, uint256 user2Pk) = makeAddrAndKey("testUser2");
-
         collection.setHustleMarket(marketplace);
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
 
-        uint256[] memory marketplaceTokens = collection.userTokensByType(
-            marketplace,
+        (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
+            testUser1,
+            testUser2,
             TokenType.RespectSeeker
         );
-        uint256 tokenId1 = marketplaceTokens[0];
-        uint256 tokenId2 = marketplaceTokens[1];
-        console.log("tokenId1", tokenId1);
-        console.log("tokenId2", tokenId2);
         string memory codePhrase = "hello";
         bytes32 domainSeparator = collection.domainSeparator();
-
-        _changePrank(marketplace);
-        collection.safeTransferFrom(marketplace, testUser1, tokenId1);
-        collection.safeTransferFrom(marketplace, testUser2, tokenId2);
 
         /// sign
         bytes32 structHash = keccak256(
@@ -185,6 +199,608 @@ contract StreetCredTest is Test {
             collection.balanceOfType(marketplace, TokenType.RespectSeeker),
             1
         );
+        bytes32 key = collection.generateKey(tokenId1, tokenId2);
+        uint256 createdNft = collection.getCreatedNft(key, 0);
+        assertEq(createdNft, 3);
+    }
+
+    function test_mintStreetSoul_RevertNotStarted() public {
+        collection.setHustleMarket(marketplace);
+
+        (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
+            testUser1,
+            testUser2,
+            TokenType.RespectSeeker
+        );
+        string memory codePhrase = "hello";
+        bytes32 domainSeparator = collection.domainSeparator();
+
+        /// sign
+        bytes32 structHash = keccak256(
+            abi.encode(
+                collection.MINT_TYPEHASH(),
+                tokenId1,
+                tokenId2,
+                keccak256(bytes(codePhrase)),
+                block.timestamp + 1000
+            )
+        );
+
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+        bytes memory signature2 = _signMint(testUser2, user2Pk, digest);
+        _changePrank(owner);
+        collection.setHustleMarket(address(0));
+        vm.expectRevert(StreetCred.NotStarted.selector);
+
+        _changePrank(testUser1);
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            block.timestamp + 1000,
+            signature1,
+            signature2
+        );
+    }
+
+    function test_mintStreetSoul_RevertSignatureExpired() public {
+        collection.setHustleMarket(marketplace);
+
+        (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
+            testUser1,
+            testUser2,
+            TokenType.RespectSeeker
+        );
+        string memory codePhrase = "hello";
+        bytes32 domainSeparator = collection.domainSeparator();
+        uint256 deadline = block.timestamp + 10;
+
+        /// sign
+        bytes32 structHash = keccak256(
+            abi.encode(
+                collection.MINT_TYPEHASH(),
+                tokenId1,
+                tokenId2,
+                keccak256(bytes(codePhrase)),
+                deadline
+            )
+        );
+
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+        bytes memory signature2 = _signMint(testUser2, user2Pk, digest);
+
+        _skip(100);
+        _changePrank(testUser1);
+        vm.expectRevert(StreetCred.SignatureExpired.selector);
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            deadline,
+            signature1,
+            signature2
+        );
+    }
+
+    function test_mintStreetSoul_RevertInvalidOrder() public {
+        collection.setHustleMarket(marketplace);
+
+        (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
+            testUser1,
+            testUser2,
+            TokenType.RespectSeeker
+        );
+        string memory codePhrase = "hello";
+        bytes32 domainSeparator = collection.domainSeparator();
+        uint256 deadline = block.timestamp + 10;
+
+        /// sign
+        bytes32 structHash = keccak256(
+            abi.encode(
+                collection.MINT_TYPEHASH(),
+                tokenId1,
+                tokenId2,
+                keccak256(bytes(codePhrase)),
+                deadline
+            )
+        );
+
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+        bytes memory signature2 = _signMint(testUser2, user2Pk, digest);
+
+        _changePrank(testUser1);
+        vm.expectRevert(StreetCred.InvalidOrder.selector);
+        collection.mintStreetSoul(
+            tokenId2,
+            tokenId1,
+            codePhrase,
+            deadline,
+            signature1,
+            signature2
+        );
+    }
+
+    function test_mintStreetSoul_RevertInvalidAddress() public {
+        collection.setHustleMarket(marketplace);
+
+        (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
+            testUser1,
+            testUser2,
+            TokenType.RespectSeeker
+        );
+        string memory codePhrase = "hello";
+        bytes32 domainSeparator = collection.domainSeparator();
+        uint256 deadline = block.timestamp + 10;
+
+        /// sign
+        bytes32 structHash = keccak256(
+            abi.encode(
+                collection.MINT_TYPEHASH(),
+                tokenId1,
+                tokenId2,
+                keccak256(bytes(codePhrase)),
+                deadline
+            )
+        );
+
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+        bytes memory signature2 = _signMint(testUser2, user2Pk, digest);
+
+        _changePrank(testUser1);
+        vm.expectRevert(StreetCred.InvalidAddress.selector);
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            deadline + 1,
+            signature1,
+            signature2
+        );
+    }
+
+    function test_mintStreetSoul_RevertCodePhraseUsed() public {
+        collection.setHustleMarket(marketplace);
+
+        (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
+            testUser1,
+            testUser2,
+            TokenType.RespectSeeker
+        );
+        string memory codePhrase = "hello";
+        bytes32 domainSeparator = collection.domainSeparator();
+        uint256 deadline = block.timestamp + 10;
+
+        /// sign
+        bytes32 structHash = keccak256(
+            abi.encode(
+                collection.MINT_TYPEHASH(),
+                tokenId1,
+                tokenId2,
+                keccak256(bytes(codePhrase)),
+                deadline
+            )
+        );
+
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+        bytes memory signature2 = _signMint(testUser2, user2Pk, digest);
+
+        _changePrank(testUser1);
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            deadline,
+            signature1,
+            signature2
+        );
+
+        vm.expectRevert(StreetCred.CodePhraseUsed.selector);
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            deadline,
+            signature1,
+            signature2
+        );
+    }
+
+    function test_mintStreetSoul_RevertIfCheat() public {
+        collection.setHustleMarket(marketplace);
+
+        (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
+            testUser1,
+            testUser1,
+            TokenType.RespectSeeker
+        );
+        string memory codePhrase = "hello";
+        bytes32 domainSeparator = collection.domainSeparator();
+        uint256 deadline = block.timestamp + 10;
+
+        /// sign
+        bytes32 structHash = keccak256(
+            abi.encode(
+                collection.MINT_TYPEHASH(),
+                tokenId1,
+                tokenId2,
+                keccak256(bytes(codePhrase)),
+                deadline
+            )
+        );
+
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+
+        _changePrank(testUser1);
+        vm.expectRevert(StreetCred.Cheat.selector);
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            deadline,
+            signature1,
+            signature1
+        );
+    }
+
+    function test_mintStreetSoul_RevertIfNotNftOwner_1() public {
+        collection.setHustleMarket(marketplace);
+
+        (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
+            user1,
+            user2,
+            TokenType.RespectSeeker
+        );
+        string memory codePhrase = "hello";
+        uint256 deadline = block.timestamp + 10;
+
+        /// sign
+        bytes32 digest = _createDigest(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            deadline
+        );
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+        bytes memory signature2 = _signMint(testUser2, user2Pk, digest);
+
+        _changePrank(testUser1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StreetCred.InvalidSigner.selector,
+                testUser1,
+                user1
+            )
+        );
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            deadline,
+            signature1,
+            signature2
+        );
+    }
+
+    function test_mintStreetSoul_RevertIfNotNftOwner_2() public {
+        collection.setHustleMarket(marketplace);
+
+        (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
+            testUser1,
+            user2,
+            TokenType.RespectSeeker
+        );
+        string memory codePhrase = "hello";
+        uint256 deadline = block.timestamp + 10;
+
+        bytes32 digest = _createDigest(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            deadline
+        );
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+        bytes memory signature2 = _signMint(testUser2, user2Pk, digest);
+
+        _changePrank(testUser1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StreetCred.InvalidSigner.selector,
+                testUser2,
+                user2
+            )
+        );
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            codePhrase,
+            deadline,
+            signature1,
+            signature2
+        );
+    }
+
+    function test_mintStreetSoul_RevertIfNotEnoughHealth() public {
+        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
+
+        _meet(
+            testUser1,
+            testUser2,
+            user1Pk,
+            user2Pk,
+            TokenType.RespectSeeker,
+            TokenType.RespectSeeker,
+            "hello2",
+            false,
+            false
+        );
+
+        _meet(
+            testUser1,
+            testUser3,
+            user1Pk,
+            user3Pk,
+            TokenType.RespectSeeker,
+            TokenType.RespectSeeker,
+            "hello3",
+            false,
+            false
+        );
+
+        _meet(
+            testUser1,
+            testUser4,
+            user1Pk,
+            user4Pk,
+            TokenType.RespectSeeker,
+            TokenType.RespectSeeker,
+            "hello4",
+            false,
+            false
+        );
+
+        _meet(
+            testUser1,
+            testUser5,
+            user1Pk,
+            user5Pk,
+            TokenType.RespectSeeker,
+            TokenType.RespectSeeker,
+            "hello5",
+            false,
+            false
+        );
+
+        _meet(
+            testUser1,
+            testUser6,
+            user1Pk,
+            user6Pk,
+            TokenType.RespectSeeker,
+            TokenType.RespectSeeker,
+            "hello6",
+            true,
+            false
+        );
+    }
+
+    function test_mintStreetSoul_RevertIfDifferentTypes() public {
+        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
+        _mintAndTransferNftsToUsers(TokenType.StreetHustler);
+
+        _meet(
+            testUser1,
+            testUser2,
+            user1Pk,
+            user2Pk,
+            TokenType.RespectSeeker,
+            TokenType.StreetHustler,
+            "hello2",
+            false,
+            true
+        );
+    }
+
+    function test_mintStreetSoul_RevertIfAlreadyMeet() public {
+        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
+
+        uint256 tokenId1 = collection.userTokensByType(
+            testUser1,
+            TokenType.RespectSeeker
+        )[0];
+        uint256 tokenId2 = collection.userTokensByType(
+            testUser2,
+            TokenType.RespectSeeker
+        )[0];
+        bytes32 digest = _createDigest(
+            tokenId1,
+            tokenId2,
+            "hello",
+            block.timestamp + 5
+        );
+
+        bytes memory signature1 = _signMint(testUser1, user1Pk, digest);
+        bytes memory signature2 = _signMint(testUser2, user2Pk, digest);
+
+        _changePrank(testUser1);
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            "hello",
+            block.timestamp + 5,
+            signature1,
+            signature2
+        );
+
+        bytes32 digest2 = _createDigest(
+            tokenId1,
+            tokenId2,
+            "hello2",
+            block.timestamp + 10
+        );
+        bytes memory signature1_1 = _signMint(testUser1, user1Pk, digest2);
+        bytes memory signature2_1 = _signMint(testUser2, user2Pk, digest2);
+
+        _changePrank(testUser1);
+        vm.expectRevert(StreetCred.AlreadyMet.selector);
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            "hello2",
+            block.timestamp + 10,
+            signature1_1,
+            signature2_1
+        );
+    }
+
+    function test_tokenUri_Success() public {
+        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
+        uint256 tokenId = collection.userTokensByType(
+            testUser1,
+            TokenType.RespectSeeker
+        )[0];
+        collection.setBaseURI("https://example.com/");
+        string memory uri = collection.tokenURI(tokenId);
+        assertEq(uri, "https://example.com/0.json");
+    }
+
+    function test_tokenUri_RevertTokenNotExist() public {
+        vm.expectRevert(StreetCred.TokenNotExist.selector);
+        collection.tokenURI(1);
+    }
+
+    function test_tokenUri_EmptyString() public {
+        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
+
+        string memory uri = collection.tokenURI(1);
+        assertEq(uri, "");
+    }
+
+    function _meet(
+        address _user1,
+        address _user2,
+        uint256 _user1Pk,
+        uint256 _user2Pk,
+        TokenType _tokenType1,
+        TokenType _tokenType2,
+        string memory _codePhrase,
+        bool isCheckHealth,
+        bool isCheckTypes
+    ) internal {
+        uint256 deadline = block.timestamp + 10;
+
+        uint256 tokenId1 = collection.userTokensByType(_user1, _tokenType1)[0];
+        uint256 tokenId2 = collection.userTokensByType(_user2, _tokenType2)[0];
+        bytes32 digest = _createDigest(
+            tokenId1,
+            tokenId2,
+            _codePhrase,
+            deadline
+        );
+        bytes memory signature1 = _signMint(_user1, _user1Pk, digest);
+        bytes memory signature2 = _signMint(_user2, _user2Pk, digest);
+
+        _changePrank(_user1);
+        if (isCheckTypes) {
+            vm.expectRevert(StreetCred.DifferentTypes.selector);
+        }
+        if (isCheckHealth) {
+            vm.expectRevert(StreetCred.InsufficientHealth.selector);
+        }
+
+        collection.mintStreetSoul(
+            tokenId1,
+            tokenId2,
+            _codePhrase,
+            deadline,
+            signature1,
+            signature2
+        );
+    }
+
+    function _createDigest(
+        uint256 _tokenId1,
+        uint256 _tokenId2,
+        string memory _codePhrase,
+        uint256 _deadline
+    ) internal view returns (bytes32 digest) {
+        bytes32 domainSeparator = collection.domainSeparator();
+        bytes32 structHash = keccak256(
+            abi.encode(
+                collection.MINT_TYPEHASH(),
+                _tokenId1,
+                _tokenId2,
+                keccak256(bytes(_codePhrase)),
+                _deadline
+            )
+        );
+
+        digest = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+    }
+
+    function _mintAndTransferNftsToUsers(TokenType tokenType) internal {
+        collection.setHustleMarket(marketplace);
+        address[6] memory users = [
+            testUser1,
+            testUser2,
+            testUser3,
+            testUser4,
+            testUser5,
+            testUser6
+        ];
+        for (uint i = 0; i < users.length; i++) {
+            collection.ownerMintStreetSoul(tokenType);
+            uint256[] memory marketplaceTokens = collection.userTokensByType(
+                marketplace,
+                tokenType
+            );
+            _changePrank(marketplace);
+            collection.safeTransferFrom(
+                marketplace,
+                users[i],
+                marketplaceTokens[0]
+            );
+            _changePrank(owner);
+        }
+    }
+
+    function _mintAndTransferNftsToUser(
+        address _user1,
+        address _user2,
+        TokenType _tokenType
+    ) internal returns (uint256 tokenId1, uint256 tokenId2) {
+        collection.ownerMintStreetSoul(_tokenType);
+        collection.ownerMintStreetSoul(_tokenType);
+
+        uint256[] memory marketplaceTokens = collection.userTokensByType(
+            marketplace,
+            _tokenType
+        );
+        tokenId1 = marketplaceTokens[0];
+        tokenId2 = marketplaceTokens[1];
+        _changePrank(marketplace);
+        collection.safeTransferFrom(marketplace, _user1, tokenId1);
+        collection.safeTransferFrom(marketplace, _user2, tokenId2);
+        _changePrank(owner);
     }
 
     function _signMint(
@@ -209,6 +825,11 @@ contract StreetCredTest is Test {
     function _changePrank(address user_) internal {
         vm.stopPrank();
         vm.startPrank(user_);
+    }
+
+    function _skip(uint256 seconds_) internal {
+        skip(seconds_);
+        console.log("skipped: ", seconds_);
     }
 
     // function testOwnerMintStreetSoul() public {

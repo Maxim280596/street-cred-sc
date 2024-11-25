@@ -1,7 +1,8 @@
 [profile.ci.fuzz]
 runs = 10_000
+unchecked_cheatcode_artifacts = true
+viaIR = true
 
 remappings = [
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
 ]
-unchecked_cheatcode_artifacts = true

@@ -1,3 +1,4 @@
+/// SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -50,7 +51,7 @@ contract StreetCred is Ownable, ERC721 {
     mapping(bytes32 => EnumerableSet.UintSet) private meets; // address1, address2 -> tokenId
 
     error InvalidAddress();
-    error AlreadyMeet();
+    error AlreadyMet();
     error TokenNotExist();
     error SignatureExpired();
     error InvalidOrder();
@@ -258,7 +259,7 @@ contract StreetCred is Ownable, ERC721 {
         TokenType type1 = tokenInfos[tokenId1].tokenType;
         TokenType type2 = tokenInfos[tokenId2].tokenType;
         require(type1 == type2, DifferentTypes());
-        require(vibeCount(key) == 0, AlreadyMeet());
+        require(vibeCount(key) == 0, AlreadyMet());
 
         meets[key].add(tokenId);
         tokenInfos[tokenId1].health--;
@@ -287,12 +288,7 @@ contract StreetCred is Ownable, ERC721 {
         address from = _ownerOf(tokenId);
         TokenType _type = tokenInfos[tokenId].tokenType;
         ownedTokens[from][_type].remove(tokenId);
-        if (to != address(0)) {
-            ownedTokens[to][_type].add(tokenId);
-            return super._update(to, tokenId, auth);
-        } else {
-            delete tokenInfos[tokenId];
-            return super._update(to, tokenId, auth);
-        }
+        ownedTokens[to][_type].add(tokenId);
+        return super._update(to, tokenId, auth);
     }
 }
