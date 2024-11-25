@@ -5,8 +5,8 @@ import {Test, console} from "forge-std/Test.sol";
 
 import {StreetCred, TokenType, TokenInfo} from "src/StreetCred.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {TestUsdc} from "test/TestUsdc.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract StreetCredTest is Test {
     using ECDSA for bytes32;
@@ -824,5 +824,19 @@ contract StreetCredTest is Test {
     function _skip(uint256 seconds_) internal {
         skip(seconds_);
         console.log("skipped: ", seconds_);
+    }
+}
+
+contract TestUsdc is ERC20 {
+    constructor(address _owner) ERC20("USDC", "USDC") {
+        _mint(_owner, 1000000 * 1e6);
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+
+    function mint(address to, uint256 amount) public {
+        _mint(to, amount);
     }
 }
