@@ -54,7 +54,7 @@ contract StreetCredTest is Test {
     function test_deploy_success() public view {
         assertEq(address(market.owner()), owner);
         assertEq(address(market.streetCred()), address(collection));
-        assertEq(market.usdToken(), address(usdc));
+        assertEq(address(market.usdToken()), address(usdc));
 
         uint256 level1Price = market.getPrice(TokenType.RespectSeeker);
         uint256 level2Price = market.getPrice(TokenType.StreetHustler);

@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -20,15 +20,17 @@ struct UserInfo {
 
 contract HustleMarket is Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
-    using SafeERC20 for IERC20;
+    using SafeERC20 for ERC20;
 
     uint32 public constant PRECCISION = 100_000;
     uint32 public constant HOMIE_FEE_PERCENT = 37_500;
-    uint32 public constant PROJECT_FEE_PERCENT = 20_000;
+    uint32 public constant PROJECT_FEE_PERCENT = 18_000;
     uint32 public constant REF_FEE_PERCENT = 5_000;
+    uint32 public constant HUSTLE_BOX_FEE_PERCENT = 2_000;
 
     StreetCred public immutable streetCred;
-    address public immutable usdToken;
+    ERC20 public immutable usdToken;
+    address public lottery;
 
     uint256 public totalUsdInGame;
     uint256 public totalUsers;
@@ -61,6 +63,9 @@ contract HustleMarket is Ownable {
         uint256 tokenId
     );
 
+    event LotterySetted(address lottery);
+    event RefSetted(address user, address ref);
+
     constructor(
         address _initialOwner,
         address _streetCred,
@@ -70,7 +75,7 @@ contract HustleMarket is Ownable {
         require(_streetCred != address(0), ZeroAddress());
         require(_usdToken != address(0), ZeroAddress());
         streetCred = StreetCred(_streetCred);
-        usdToken = _usdToken;
+        usdToken = ERC20(_usdToken);
 
         require(
             _prices.length - 1 == uint256(type(TokenType).max), /// double check this line in tests
@@ -79,6 +84,11 @@ contract HustleMarket is Ownable {
         for (uint8 i = 0; i < _prices.length; i++) {
             tokenPrice[TokenType(i)] = _prices[i];
         }
+    }
+
+    function setLottery(address _lottery) external onlyOwner {
+        lottery = _lottery;
+        emit LotterySetted(_lottery);
     }
 
     function sell(uint256 tokenId) internal {
@@ -93,16 +103,19 @@ contract HustleMarket is Ownable {
 
         uint256 price = tokenPrice[tokenType];
         address user = msg.sender;
-        address owner = owner();
 
         _setUpRef(user, ref);
 
         uint256 tokenId = queues[tokenType].at(0);
         queues[tokenType].remove(tokenId);
 
-        (uint256 homieFee, uint256 projectFee, uint256 refFee) = _calculateFees(
-            tokenType
-        );
+        (
+            uint256 homieFee,
+            uint256 projectFee,
+            uint256 refFee,
+            uint256 lotteryFee
+        ) = _calculateFees(tokenType);
+
         (address homie1, address homie2) = _getHomies(tokenId);
         users[homie1].earnedInGame += homieFee;
         users[homie2].earnedInGame += homieFee;
@@ -112,11 +125,12 @@ contract HustleMarket is Ownable {
         users[user].spentInGame += price;
         totalUsdInGame += price;
 
-        IERC20(usdToken).safeTransferFrom(user, address(this), price);
-        IERC20(usdToken).safeTransfer(owner, projectFee);
-        IERC20(usdToken).safeTransfer(homie1, homieFee);
-        IERC20(usdToken).safeTransfer(homie2, homieFee);
-        IERC20(usdToken).safeTransfer(referrer, refFee);
+        usdToken.safeTransferFrom(user, address(this), price);
+        usdToken.safeTransfer(owner(), projectFee);
+        usdToken.safeTransfer(homie1, homieFee);
+        usdToken.safeTransfer(homie2, homieFee);
+        usdToken.safeTransfer(referrer, refFee);
+        usdToken.safeTransfer(lottery, lotteryFee);
 
         streetCred.safeTransferFrom(address(this), user, tokenId);
         emit Buy(user, tokenType, tokenId, price, homie1, homie2);
@@ -146,13 +160,18 @@ contract HustleMarket is Ownable {
     function _setUpRef(address user, address ref) internal {
         UserInfo memory userInfo = users[user];
         bool isNew = userInfo.connectionTimestamp == 0;
+        address owner = owner();
         if (isNew) {
             require(ref != msg.sender, Cheat());
             if (ref != address(0)) {
                 require(users[ref].connectionTimestamp > 0, InvalidRef());
                 users[user].ref = ref;
+                users[ref].refCount++;
+                emit RefSetted(user, ref);
             } else {
-                users[user].ref = owner();
+                users[user].ref = owner;
+                users[owner].refCount++;
+                emit RefSetted(user, owner);
             }
             users[user].connectionTimestamp = block.timestamp;
             totalUsers++;
@@ -173,12 +192,18 @@ contract HustleMarket is Ownable {
     )
         public
         view
-        returns (uint256 homieFee, uint256 projectFee, uint256 refFee)
+        returns (
+            uint256 homieFee,
+            uint256 projectFee,
+            uint256 refFee,
+            uint256 lotteryFee
+        )
     {
         uint256 price = tokenPrice[tokenType];
         homieFee = (price * HOMIE_FEE_PERCENT) / PRECCISION;
         projectFee = (price * PROJECT_FEE_PERCENT) / PRECCISION;
         refFee = (price * REF_FEE_PERCENT) / PRECCISION;
+        lotteryFee = (price * HUSTLE_BOX_FEE_PERCENT) / PRECCISION;
     }
 
     function onERC721Received(
