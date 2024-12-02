@@ -15,8 +15,6 @@ contract HustleBox is Ownable, ERC721Holder {
     HustleMarket public immutable hustleMarket;
     ERC20 public immutable usdToken;
 
-    uint256 public constant JACKPOT_MULTIPLIER = 2;
-
     mapping(uint256 => bool) isActivated;
 
     error ActivationNotAllowed();
@@ -56,12 +54,12 @@ contract HustleBox is Ownable, ERC721Holder {
     function calculateMaxPrize(uint256 tokenId) public view returns (uint256) {
         TokenType tokenType = streetCred.getNftTypeById(tokenId);
         uint256 nftPrice = hustleMarket.getPrice(tokenType);
-        uint256 maxPrize = nftPrice * JACKPOT_MULTIPLIER;
+        // uint256 maxPrize = nftPrice;
         uint256 usdBalance = usdToken.balanceOf(address(this));
-        if (usdBalance < maxPrize) {
+        if (usdBalance < nftPrice) {
             return usdBalance;
         }
-        return maxPrize;
+        return nftPrice;
     }
 
     function _calculateWinnings(

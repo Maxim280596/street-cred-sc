@@ -228,7 +228,7 @@ contract HustleBoxTest is Test {
         _changePrank(owner);
         usdc.mint(address(lottery), 1000e6);
         uint256 maxPrize1 = lottery.calculateMaxPrize(1);
-        assertEq(maxPrize1, prices[0] * 2);
+        assertEq(maxPrize1, prices[0]);
     }
 
     function _buyAndReplenishLottery(
