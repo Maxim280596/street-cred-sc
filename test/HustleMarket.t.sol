@@ -6,13 +6,15 @@ import {HustleMarket, UserInfo} from "src/HustleMarket.sol";
 import {StreetCred, TokenType, TokenInfo} from "src/StreetCred.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {TestUsdc} from "test/TestUsdc.sol";
+import {HustleBox} from "src/HustleBox.sol";
 
-contract StreetCredTest is Test {
+contract HustleMarketTest is Test {
     using ECDSA for bytes32;
     HustleMarket market;
     StreetCred collection;
     TestUsdc usdc;
+    HustleBox lottery;
     address public owner = makeAddr("owner");
     address public testUser1;
     address public testUser2;
@@ -43,6 +45,9 @@ contract StreetCredTest is Test {
         collection.setHustleMarket(address(market));
         collection.setBaseURI("https://example.com/");
 
+        lottery = new HustleBox(owner, address(collection), address(market));
+        market.setLottery(address(lottery));
+
         (testUser1, user1Pk) = makeAddrAndKey("testUser1");
         (testUser2, user2Pk) = makeAddrAndKey("testUser2");
         (testUser3, user3Pk) = makeAddrAndKey("testUser3");
@@ -56,9 +61,9 @@ contract StreetCredTest is Test {
         assertEq(address(market.streetCred()), address(collection));
         assertEq(address(market.usdToken()), address(usdc));
 
-        uint256 level1Price = market.getPrice(TokenType.RespectSeeker);
-        uint256 level2Price = market.getPrice(TokenType.StreetHustler);
-        uint256 level3Price = market.getPrice(TokenType.UrbanLegend);
+        uint256 level1Price = market.getPrice(TokenType.level1);
+        uint256 level2Price = market.getPrice(TokenType.level2);
+        uint256 level3Price = market.getPrice(TokenType.level3);
 
         assertEq(level1Price, prices[0]);
         assertEq(level2Price, prices[1]);
@@ -75,78 +80,95 @@ contract StreetCredTest is Test {
         new HustleMarket(owner, address(collection), address(0), prices);
     }
 
-    function test_deploy_revertIfPricesIncorrect() public {
-        uint256[] memory incorrectPrices = new uint256[](2);
-        incorrectPrices[0] = 10e6;
-        incorrectPrices[1] = 50e6;
-        vm.expectRevert(HustleMarket.InvalidTokenPrice.selector);
-        new HustleMarket(
-            owner,
-            address(collection),
-            address(usdc),
-            incorrectPrices
-        );
-    }
+    // function test_deploy_revertIfPricesIncorrect() public {
+    //     uint256[] memory incorrectPrices = new uint256[](2);
+    //     incorrectPrices[0] = 10e6;
+    //     incorrectPrices[1] = 50e6;
+    //     vm.expectRevert(HustleMarket.InvalidTokenPrice.selector);
+    //     new HustleMarket(
+    //         owner,
+    //         address(collection),
+    //         address(usdc),
+    //         incorrectPrices
+    //     );
+    // }
 
     function test_sell_owner_success() public {
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
         uint256[] memory tokenIds = collection.userTokensByType(
             address(market),
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         assertEq(tokenIds.length, 1);
-        assertEq(market.getQueueLength(TokenType.RespectSeeker), 1);
+        assertEq(market.getQueueLength(TokenType.level1), 1);
     }
 
     function test_buy_ownerNFT_success() public {
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
 
         uint256 ownerBalanceBefore = usdc.balanceOf(owner);
 
-        _replenishUsdc(testUser1, prices[uint256(TokenType.RespectSeeker)]);
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
         _changePrank(testUser1);
-        market.buy(TokenType.RespectSeeker, address(0));
+        market.buy(TokenType.level1, address(0));
 
         uint256 ownerBalanceAfter = usdc.balanceOf(owner);
+        uint256 lotteryFee = (prices[uint256(TokenType.level1)] *
+            market.HUSTLE_BOX_FEE_PERCENT()) / market.PRECCISION();
 
         assertEq(
             ownerBalanceAfter,
-            ownerBalanceBefore + prices[uint256(TokenType.RespectSeeker)]
+            ownerBalanceBefore + prices[uint256(TokenType.level1)] - lotteryFee
         );
     }
 
-    function test_buy_RevertIfNoTokensInQueue() public {
+    function test_buy_IfNoTokensInQueue() public {
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
         _changePrank(testUser1);
-        vm.expectRevert(HustleMarket.EmptyQueue.selector);
-        market.buy(TokenType.RespectSeeker, address(0));
+        uint256 usdcBalanceBefore = usdc.balanceOf(testUser1);
+        uint256 marketBalanceBefore = usdc.balanceOf(address(market));
+        market.buy(TokenType.level1, address(0));
+        uint256 marketBalanceAfter = usdc.balanceOf(address(market));
+        uint256 usdcBalanceAfter = usdc.balanceOf(testUser1);
+        address userInQueue = market.getUserInQueueByIndex(TokenType.level1, 0);
+        uint256 usersQueueLength = market.getUsersQueueLength(TokenType.level1);
+
+        assertEq(
+            marketBalanceAfter,
+            marketBalanceBefore + prices[uint256(TokenType.level1)]
+        );
+
+        assertEq(usersQueueLength, 1);
+        assertEq(userInQueue, testUser1);
+        assertEq(
+            usdcBalanceBefore,
+            usdcBalanceAfter + prices[uint256(TokenType.level1)]
+        );
     }
 
     function test_buy_createdNftByUsers() public {
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
+        collection.ownerMintStreetSoul(TokenType.level1);
 
-        _replenishUsdc(testUser1, prices[uint256(TokenType.RespectSeeker)]);
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
         _changePrank(testUser1);
-        market.buy(TokenType.RespectSeeker, address(0));
+        market.buy(TokenType.level1, address(0));
 
-        _replenishUsdc(testUser2, prices[uint256(TokenType.RespectSeeker)]);
+        _replenishUsdc(testUser2, prices[uint256(TokenType.level1)]);
         _changePrank(testUser2);
-        market.buy(TokenType.RespectSeeker, address(0));
+        market.buy(TokenType.level1, address(0));
         _meet(
             testUser1,
             testUser2,
             user1Pk,
             user2Pk,
-            TokenType.RespectSeeker,
-            TokenType.RespectSeeker,
+            TokenType.level1,
+            TokenType.level1,
             "test"
         );
-        assertEq(market.getQueueLength(TokenType.RespectSeeker), 1);
+        assertEq(market.getQueueLength(TokenType.level1), 1);
 
-        uint256 tokenId = market.getTokenIdInQueueByIndex(
-            TokenType.RespectSeeker,
-            0
-        );
+        uint256 tokenId = market.getTokenIdInQueueByIndex(TokenType.level1, 0);
 
         (address homie1, address homie2) = _getHomies(tokenId);
         assertEq(homie1, testUser1);
@@ -155,20 +177,20 @@ contract StreetCredTest is Test {
         uint256 homie1BalanceBefore = usdc.balanceOf(homie1);
         uint256 homie2BalanceBefore = usdc.balanceOf(homie2);
         uint256 ownerBalanceBefore = usdc.balanceOf(owner);
-        _replenishUsdc(testUser3, prices[uint256(TokenType.RespectSeeker)]);
+        _replenishUsdc(testUser3, prices[uint256(TokenType.level1)]);
         _changePrank(testUser3);
-        market.buy(TokenType.RespectSeeker, testUser1);
+        market.buy(TokenType.level1, testUser1);
 
         uint256 homie1BalanceAfter = usdc.balanceOf(homie1);
         uint256 homie2BalanceAfter = usdc.balanceOf(homie2);
         uint256 ownerBalanceAfter = usdc.balanceOf(owner);
 
         (uint256 homieFee, uint256 projectFee, uint256 refFee) = _calculateFees(
-            TokenType.RespectSeeker
+            TokenType.level1
         );
 
-        _checkHealth(testUser1, TokenType.RespectSeeker, 3);
-        _checkHealth(testUser2, TokenType.RespectSeeker, 3);
+        _checkHealth(testUser1, TokenType.level1, 3);
+        _checkHealth(testUser2, TokenType.level1, 3);
 
         assertEq(ownerBalanceAfter, projectFee + ownerBalanceBefore);
         assertEq(homie1BalanceAfter, refFee + homieFee + homie1BalanceBefore);
@@ -176,49 +198,123 @@ contract StreetCredTest is Test {
     }
 
     function test_buy_RevertIfCheat() public {
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
 
-        _replenishUsdc(testUser1, prices[uint256(TokenType.RespectSeeker)]);
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
         _changePrank(testUser1);
         vm.expectRevert(HustleMarket.Cheat.selector);
-        market.buy(TokenType.RespectSeeker, testUser1);
+        market.buy(TokenType.level1, testUser1);
     }
 
     function test_buy_RevertIfInvalidRef() public {
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
 
-        _replenishUsdc(testUser1, prices[uint256(TokenType.RespectSeeker)]);
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
         _changePrank(testUser1);
         vm.expectRevert(HustleMarket.InvalidRef.selector);
-        market.buy(TokenType.RespectSeeker, testUser2);
+        market.buy(TokenType.level1, testUser2);
     }
 
     function test_buy_NotUpdateRefIfSecondNft() public {
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
+        collection.ownerMintStreetSoul(TokenType.level1);
 
-        _replenishUsdc(testUser1, prices[uint256(TokenType.RespectSeeker)]);
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
         _changePrank(testUser1);
-        market.buy(TokenType.RespectSeeker, address(0));
+        market.buy(TokenType.level1, address(0));
 
-        _replenishUsdc(testUser1, prices[uint256(TokenType.RespectSeeker)]);
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
         _changePrank(testUser1);
-        market.buy(TokenType.RespectSeeker, address(0));
+        market.buy(TokenType.level1, address(0));
         UserInfo memory user1 = market.getUserInfo(testUser1);
         assertEq(user1.ref, owner);
         assertEq(user1.connectionTimestamp, block.timestamp);
         assertEq(market.totalUsers(), 1);
         assertEq(user1.refCount, 0);
-        assertEq(
-            user1.spentInGame,
-            prices[uint256(TokenType.RespectSeeker)] * 2
-        );
+        assertEq(user1.spentInGame, prices[uint256(TokenType.level1)] * 2);
         assertEq(user1.earnedInGame, 0);
+    }
+
+    function test_buy_fromUsersQueue() public {
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
+        _changePrank(testUser1);
+
+        market.buy(TokenType.level1, address(0));
+        _changePrank(owner);
+        uint256 lotteryBalaceBefore = usdc.balanceOf(address(lottery));
+        uint256 ownerBalanceBefore = usdc.balanceOf(owner);
+        collection.ownerMintStreetSoul(TokenType.level1);
+        uint256 lotteryFee = (prices[uint256(TokenType.level1)] *
+            market.HUSTLE_BOX_FEE_PERCENT()) / market.PRECCISION();
+        assertEq(collection.balanceOfType(testUser1, TokenType.level1), 1);
+        assertEq(collection.ownerOf(1), testUser1);
+        assertEq(market.getUsersQueueLength(TokenType.level1), 0);
+        assertEq(
+            ownerBalanceBefore,
+            usdc.balanceOf(owner) - (prices[0] - lotteryFee)
+        );
+        assertEq(
+            usdc.balanceOf(address(lottery)),
+            lotteryBalaceBefore + lotteryFee
+        );
+    }
+
+    function test_buy_revertIfAlreadyInQueue() public {
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
+        _changePrank(testUser1);
+        market.buy(TokenType.level1, address(0));
+        _replenishUsdc(testUser1, prices[uint256(TokenType.level1)]);
+        vm.expectRevert(HustleMarket.AlreadyInQueue.selector);
+        _changePrank(testUser1);
+        market.buy(TokenType.level1, address(0));
+    }
+
+    function test_settLottery_revertIfNotOwner() public {
+        _changePrank(testUser1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Ownable.OwnableUnauthorizedAccount.selector,
+                testUser1
+            )
+        );
+        market.setLottery(testUser2);
     }
 
     function test_onERC721Received_RevertIfNotFromZeroAddress() public {
         vm.expectRevert(HustleMarket.ForbiddenSender.selector);
         market.onERC721Received(address(0), testUser1, 1, abi.encodePacked());
+    }
+
+    function test_addNewTokenType_success() public {
+        uint256 newPrice = 200e6;
+        market.addNewTokenType(TokenType.level4, newPrice);
+        assertEq(market.getPrice(TokenType.level4), newPrice);
+    }
+
+    function test_addNewTokenType_revertIfAlreadyExist() public {
+        vm.expectRevert(HustleMarket.AlreadySetted.selector);
+        market.addNewTokenType(TokenType.level1, 200e6);
+    }
+
+    function test_addNewTokenType_refertIfZeroPrice() public {
+        vm.expectRevert(HustleMarket.InvalidTokenPrice.selector);
+        market.addNewTokenType(TokenType.level4, 0);
+    }
+
+    function test_addNewTokenType_revertIfCallerNotOwner() public {
+        _changePrank(testUser1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Ownable.OwnableUnauthorizedAccount.selector,
+                testUser1
+            )
+        );
+        market.addNewTokenType(TokenType.level4, 200e6);
+    }
+
+    function test_sell_revertIfTokenPriceEqualZero() public {
+        vm.expectRevert(HustleMarket.InvalidTokenType.selector);
+        collection.ownerMintStreetSoul(TokenType.level4);
     }
 
     function _checkHealth(
@@ -328,7 +424,7 @@ contract StreetCredTest is Test {
         _changePrank(owner);
         usdc.mint(_user, _amount);
         _changePrank(_user);
-        usdc.approve(address(market), prices[uint256(TokenType.RespectSeeker)]);
+        usdc.approve(address(market), prices[uint256(TokenType.level1)]);
         _changePrank(owner);
     }
 
@@ -340,19 +436,5 @@ contract StreetCredTest is Test {
     function _skip(uint256 seconds_) internal {
         skip(seconds_);
         console.log("skipped: ", seconds_);
-    }
-}
-
-contract TestUsdc is ERC20 {
-    constructor(address _owner) ERC20("USDC", "USDC") {
-        _mint(_owner, 1000000 * 1e6);
-    }
-
-    function decimals() public pure override returns (uint8) {
-        return 6;
-    }
-
-    function mint(address to, uint256 amount) public {
-        _mint(to, amount);
     }
 }

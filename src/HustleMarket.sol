@@ -20,6 +20,7 @@ struct UserInfo {
 
 contract HustleMarket is Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
+    using EnumerableSet for EnumerableSet.AddressSet;
     using SafeERC20 for ERC20;
 
     uint32 public constant PRECCISION = 100_000;
@@ -36,6 +37,7 @@ contract HustleMarket is Ownable {
     uint256 public totalUsers;
 
     mapping(TokenType => EnumerableSet.UintSet) internal queues;
+    mapping(TokenType => EnumerableSet.AddressSet) internal usersQueue;
     mapping(TokenType => uint256) private tokenPrice;
     mapping(address => UserInfo) private users;
 
@@ -45,6 +47,8 @@ contract HustleMarket is Ownable {
     error ForbiddenSender();
     error EmptyQueue();
     error InvalidRef();
+    error AlreadyInQueue();
+    error AlreadySetted();
     error Cheat();
 
     event Buy(
@@ -53,7 +57,8 @@ contract HustleMarket is Ownable {
         uint256 tokenId,
         uint256 price,
         address indexed homie1,
-        address indexed homie2
+        address indexed homie2,
+        bool isFromQueue
     );
 
     event Sell(
@@ -63,6 +68,8 @@ contract HustleMarket is Ownable {
         uint256 tokenId
     );
 
+    event AddToUsersQueue(address user, TokenType tokenType);
+    event AddNewNftType(TokenType tokenType, uint256 price);
     event LotterySetted(address lottery);
     event RefSetted(address user, address ref);
 
@@ -77,10 +84,10 @@ contract HustleMarket is Ownable {
         streetCred = StreetCred(_streetCred);
         usdToken = ERC20(_usdToken);
 
-        require(
-            _prices.length - 1 == uint256(type(TokenType).max), /// double check this line in tests
-            InvalidTokenPrice()
-        );
+        // require(
+        //     _prices.length - 1 == uint256(type(TokenType).max), /// double check this line in tests
+        //     InvalidTokenPrice()
+        // );
         for (uint8 i = 0; i < _prices.length; i++) {
             tokenPrice[TokenType(i)] = _prices[i];
         }
@@ -91,20 +98,121 @@ contract HustleMarket is Ownable {
         emit LotterySetted(_lottery);
     }
 
+    function addNewTokenType(
+        TokenType tokenType,
+        uint256 price
+    ) external onlyOwner {
+        require(price > 0, InvalidTokenPrice());
+        require(tokenPrice[tokenType] == 0, AlreadySetted());
+        tokenPrice[tokenType] = price;
+    }
+
     function sell(uint256 tokenId) internal {
         TokenType tokenType = streetCred.getNftTypeById(tokenId);
+        require(tokenPrice[tokenType] > 0, InvalidTokenType());
         (address homie1, address homie2) = _getHomies(tokenId);
-        queues[tokenType].add(tokenId);
         emit Sell(homie1, homie2, tokenType, tokenId);
+        if (usersQueue[tokenType].length() > 0) {
+            _sellToQueueOfUsers(tokenType, tokenId);
+        } else {
+            queues[tokenType].add(tokenId);
+        }
     }
 
     function buy(TokenType tokenType, address ref) external {
-        require(queues[tokenType].length() > 0, EmptyQueue());
+        _setUpRef(msg.sender, ref);
 
+        if (queues[tokenType].length() > 0) {
+            _buyFromQueue(tokenType);
+        } else {
+            _queueUp(tokenType);
+        }
+        // require(queues[tokenType].length() > 0, EmptyQueue());
+
+        // uint256 price = tokenPrice[tokenType];
+        // address user = msg.sender;
+
+        // _setUpRef(user, ref);
+
+        // uint256 tokenId = queues[tokenType].at(0);
+        // queues[tokenType].remove(tokenId);
+
+        // (
+        //     uint256 homieFee,
+        //     uint256 projectFee,
+        //     uint256 refFee,
+        //     uint256 lotteryFee
+        // ) = _calculateFees(tokenType);
+
+        // (address homie1, address homie2) = _getHomies(tokenId);
+        // users[homie1].earnedInGame += homieFee;
+        // users[homie2].earnedInGame += homieFee;
+        // address referrer = users[user].ref;
+        // users[referrer].refEarnings += refFee;
+
+        // users[user].spentInGame += price;
+        // totalUsdInGame += price;
+
+        // usdToken.safeTransferFrom(user, address(this), price);
+        // usdToken.safeTransfer(owner(), projectFee);
+        // usdToken.safeTransfer(homie1, homieFee);
+        // usdToken.safeTransfer(homie2, homieFee);
+        // usdToken.safeTransfer(referrer, refFee);
+        // usdToken.safeTransfer(lottery, lotteryFee);
+
+        // streetCred.safeTransferFrom(address(this), user, tokenId);
+        // emit Buy(user, tokenType, tokenId, price, homie1, homie2);
+    }
+
+    function _queueUp(TokenType tokenType) internal {
         uint256 price = tokenPrice[tokenType];
         address user = msg.sender;
+        require(!usersQueue[tokenType].contains(user), AlreadyInQueue());
 
-        _setUpRef(user, ref);
+        users[user].spentInGame += price;
+        totalUsdInGame += price;
+
+        usersQueue[tokenType].add(user);
+
+        usdToken.safeTransferFrom(user, address(this), price);
+        emit AddToUsersQueue(user, tokenType);
+    }
+
+    function _sellToQueueOfUsers(
+        TokenType tokenType,
+        uint256 tokenId
+    ) internal {
+        uint256 price = tokenPrice[tokenType];
+        address user = usersQueue[tokenType].at(0);
+        usersQueue[tokenType].remove(user);
+
+        (
+            uint256 homieFee,
+            uint256 projectFee,
+            uint256 refFee,
+            uint256 lotteryFee
+        ) = _calculateFees(tokenType);
+
+        (address homie1, address homie2) = _getHomies(tokenId);
+
+        users[homie1].earnedInGame += homieFee;
+        users[homie2].earnedInGame += homieFee;
+        address referrer = users[user].ref;
+        users[referrer].refEarnings += refFee;
+
+        usdToken.safeTransfer(owner(), projectFee);
+        usdToken.safeTransfer(homie1, homieFee);
+        usdToken.safeTransfer(homie2, homieFee);
+        usdToken.safeTransfer(referrer, refFee);
+        usdToken.safeTransfer(lottery, lotteryFee);
+
+        streetCred.safeTransferFrom(address(this), user, tokenId);
+        emit Buy(user, tokenType, tokenId, price, homie1, homie2, false);
+    }
+
+    function _buyFromQueue(TokenType tokenType) internal {
+        uint256 price = tokenPrice[tokenType];
+        address user = msg.sender;
 
         uint256 tokenId = queues[tokenType].at(0);
         queues[tokenType].remove(tokenId);
@@ -133,7 +241,7 @@ contract HustleMarket is Ownable {
         usdToken.safeTransfer(lottery, lotteryFee);
 
         streetCred.safeTransferFrom(address(this), user, tokenId);
-        emit Buy(user, tokenType, tokenId, price, homie1, homie2);
+        emit Buy(user, tokenType, tokenId, price, homie1, homie2, true);
     }
 
     function getQueueLength(
@@ -155,6 +263,19 @@ contract HustleMarket is Ownable {
 
     function getUserInfo(address user) external view returns (UserInfo memory) {
         return users[user];
+    }
+
+    function getUsersQueueLength(
+        TokenType tokenType
+    ) external view returns (uint256) {
+        return usersQueue[tokenType].length();
+    }
+
+    function getUserInQueueByIndex(
+        TokenType tokenType,
+        uint256 index
+    ) external view returns (address) {
+        return usersQueue[tokenType].at(index);
     }
 
     function _setUpRef(address user, address ref) internal {
@@ -190,7 +311,7 @@ contract HustleMarket is Ownable {
     function _calculateFees(
         TokenType tokenType
     )
-        public
+        internal
         view
         returns (
             uint256 homieFee,

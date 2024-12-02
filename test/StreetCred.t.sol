@@ -6,7 +6,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {StreetCred, TokenType, TokenInfo} from "src/StreetCred.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {TestUsdc} from "test/TestUsdc.sol";
 
 contract StreetCredTest is Test {
     using ECDSA for bytes32;
@@ -68,9 +68,9 @@ contract StreetCredTest is Test {
 
     function test_OwnerMintStreetSoul_Success() public {
         collection.setHustleMarket(marketplace);
-        _mintAllOwnerNftsAndAssert(TokenType.RespectSeeker);
-        _mintAllOwnerNftsAndAssert(TokenType.StreetHustler);
-        _mintAllOwnerNftsAndAssert(TokenType.UrbanLegend);
+        _mintAllOwnerNftsAndAssert(TokenType.level1);
+        _mintAllOwnerNftsAndAssert(TokenType.level2);
+        _mintAllOwnerNftsAndAssert(TokenType.level3);
     }
 
     function test_OwnerMintStreetSoul_RevertNotOwner() public {
@@ -81,39 +81,39 @@ contract StreetCredTest is Test {
                 user1
             )
         );
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
     }
 
     function test_OwnerMintStreetSoul_RevertMaxMintReached() public {
         collection.setHustleMarket(marketplace);
-        _mintAllOwnerNftsAndAssert(TokenType.RespectSeeker);
+        _mintAllOwnerNftsAndAssert(TokenType.level1);
         vm.expectRevert(StreetCred.OwnerMaxMintReached.selector);
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
     }
 
     function test_OwnerMintStreetSoul_RevertNotStarted() public {
         vm.expectRevert(StreetCred.NotStarted.selector);
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
     }
 
     function test_OwnerMintStreetSoul_TokenInfo() public {
         collection.setHustleMarket(marketplace);
-        collection.ownerMintStreetSoul(TokenType.RespectSeeker);
+        collection.ownerMintStreetSoul(TokenType.level1);
         uint256 tokenId = 1;
         TokenInfo memory tokenInfo = collection.getTokenInfo(tokenId);
         TokenType tokenType = collection.getNftTypeById(tokenId);
         uint256 tokenIdFromGetter = collection.tokenOfOwnerTypeAndIndex(
             marketplace,
-            TokenType.RespectSeeker,
+            TokenType.level1,
             0
         );
         uint256 lastTokenIdForType = collection.tokenOfOwnerTypeLast(
             marketplace,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         uint256[] memory userTokensByType = collection.userTokensByType(
             marketplace,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         bool isActive = collection.isActive(tokenId);
 
@@ -122,11 +122,8 @@ contract StreetCredTest is Test {
         assertEq(userTokensByType.length, 1);
         assertEq(userTokensByType[0], tokenId);
         assertEq(isActive, true);
-        assertEq(uint256(tokenType), uint256(TokenType.RespectSeeker));
-        assertEq(
-            uint256(tokenInfo.tokenType),
-            uint256(TokenType.RespectSeeker)
-        );
+        assertEq(uint256(tokenType), uint256(TokenType.level1));
+        assertEq(uint256(tokenInfo.tokenType), uint256(TokenType.level1));
         assertEq(tokenInfo.homie1, address(0));
         assertEq(tokenInfo.homie2, address(0));
         assertEq(tokenInfo.timestamp, block.timestamp);
@@ -158,7 +155,7 @@ contract StreetCredTest is Test {
         (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
             testUser1,
             testUser2,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         string memory codePhrase = "hello";
         bytes32 domainSeparator = collection.domainSeparator();
@@ -190,13 +187,11 @@ contract StreetCredTest is Test {
             signature2
         );
 
-        assertEq(
-            collection.balanceOfType(marketplace, TokenType.RespectSeeker),
-            1
-        );
+        assertEq(collection.balanceOfType(marketplace, TokenType.level1), 1);
         bytes32 key = collection.generateKey(tokenId1, tokenId2);
         uint256 createdNft = collection.getCreatedNft(key, 0);
         assertEq(createdNft, 3);
+        assertEq(collection.vibeCount(key), 1);
     }
 
     function test_mintStreetSoul_RevertNotStarted() public {
@@ -205,7 +200,7 @@ contract StreetCredTest is Test {
         (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
             testUser1,
             testUser2,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         string memory codePhrase = "hello";
         bytes32 domainSeparator = collection.domainSeparator();
@@ -247,7 +242,7 @@ contract StreetCredTest is Test {
         (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
             testUser1,
             testUser2,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         string memory codePhrase = "hello";
         bytes32 domainSeparator = collection.domainSeparator();
@@ -289,7 +284,7 @@ contract StreetCredTest is Test {
         (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
             testUser1,
             testUser2,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         string memory codePhrase = "hello";
         bytes32 domainSeparator = collection.domainSeparator();
@@ -330,7 +325,7 @@ contract StreetCredTest is Test {
         (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
             testUser1,
             testUser2,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         string memory codePhrase = "hello";
         bytes32 domainSeparator = collection.domainSeparator();
@@ -371,7 +366,7 @@ contract StreetCredTest is Test {
         (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
             testUser1,
             testUser2,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         string memory codePhrase = "hello";
         bytes32 domainSeparator = collection.domainSeparator();
@@ -421,7 +416,7 @@ contract StreetCredTest is Test {
         (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
             testUser1,
             testUser1,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         string memory codePhrase = "hello";
         bytes32 domainSeparator = collection.domainSeparator();
@@ -461,7 +456,7 @@ contract StreetCredTest is Test {
         (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
             user1,
             user2,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         string memory codePhrase = "hello";
         uint256 deadline = block.timestamp + 10;
@@ -500,7 +495,7 @@ contract StreetCredTest is Test {
         (uint256 tokenId1, uint256 tokenId2) = _mintAndTransferNftsToUser(
             testUser1,
             user2,
-            TokenType.RespectSeeker
+            TokenType.level1
         );
         string memory codePhrase = "hello";
         uint256 deadline = block.timestamp + 10;
@@ -533,15 +528,15 @@ contract StreetCredTest is Test {
     }
 
     function test_mintStreetSoul_RevertIfNotEnoughHealth() public {
-        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
+        _mintAndTransferNftsToUsers(TokenType.level1);
 
         _meet(
             testUser1,
             testUser2,
             user1Pk,
             user2Pk,
-            TokenType.RespectSeeker,
-            TokenType.RespectSeeker,
+            TokenType.level1,
+            TokenType.level1,
             "hello2",
             false,
             false
@@ -552,8 +547,8 @@ contract StreetCredTest is Test {
             testUser3,
             user1Pk,
             user3Pk,
-            TokenType.RespectSeeker,
-            TokenType.RespectSeeker,
+            TokenType.level1,
+            TokenType.level1,
             "hello3",
             false,
             false
@@ -564,8 +559,8 @@ contract StreetCredTest is Test {
             testUser4,
             user1Pk,
             user4Pk,
-            TokenType.RespectSeeker,
-            TokenType.RespectSeeker,
+            TokenType.level1,
+            TokenType.level1,
             "hello4",
             false,
             false
@@ -576,8 +571,8 @@ contract StreetCredTest is Test {
             testUser5,
             user1Pk,
             user5Pk,
-            TokenType.RespectSeeker,
-            TokenType.RespectSeeker,
+            TokenType.level1,
+            TokenType.level1,
             "hello5",
             false,
             false
@@ -588,8 +583,8 @@ contract StreetCredTest is Test {
             testUser6,
             user1Pk,
             user6Pk,
-            TokenType.RespectSeeker,
-            TokenType.RespectSeeker,
+            TokenType.level1,
+            TokenType.level1,
             "hello6",
             true,
             false
@@ -597,16 +592,16 @@ contract StreetCredTest is Test {
     }
 
     function test_mintStreetSoul_RevertIfDifferentTypes() public {
-        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
-        _mintAndTransferNftsToUsers(TokenType.StreetHustler);
+        _mintAndTransferNftsToUsers(TokenType.level1);
+        _mintAndTransferNftsToUsers(TokenType.level2);
 
         _meet(
             testUser1,
             testUser2,
             user1Pk,
             user2Pk,
-            TokenType.RespectSeeker,
-            TokenType.StreetHustler,
+            TokenType.level1,
+            TokenType.level2,
             "hello2",
             false,
             true
@@ -614,15 +609,15 @@ contract StreetCredTest is Test {
     }
 
     function test_mintStreetSoul_RevertIfAlreadyMeet() public {
-        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
+        _mintAndTransferNftsToUsers(TokenType.level1);
 
         uint256 tokenId1 = collection.userTokensByType(
             testUser1,
-            TokenType.RespectSeeker
+            TokenType.level1
         )[0];
         uint256 tokenId2 = collection.userTokensByType(
             testUser2,
-            TokenType.RespectSeeker
+            TokenType.level1
         )[0];
         bytes32 digest = _createDigest(
             tokenId1,
@@ -666,10 +661,10 @@ contract StreetCredTest is Test {
     }
 
     function test_tokenUri_Success() public {
-        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
+        _mintAndTransferNftsToUsers(TokenType.level1);
         uint256 tokenId = collection.userTokensByType(
             testUser1,
-            TokenType.RespectSeeker
+            TokenType.level1
         )[0];
         collection.setBaseURI("https://example.com/");
         string memory uri = collection.tokenURI(tokenId);
@@ -682,7 +677,7 @@ contract StreetCredTest is Test {
     }
 
     function test_tokenUri_EmptyString() public {
-        _mintAndTransferNftsToUsers(TokenType.RespectSeeker);
+        _mintAndTransferNftsToUsers(TokenType.level1);
 
         string memory uri = collection.tokenURI(1);
         assertEq(uri, "");
@@ -824,19 +819,5 @@ contract StreetCredTest is Test {
     function _skip(uint256 seconds_) internal {
         skip(seconds_);
         console.log("skipped: ", seconds_);
-    }
-}
-
-contract TestUsdc is ERC20 {
-    constructor(address _owner) ERC20("USDC", "USDC") {
-        _mint(_owner, 1000000 * 1e6);
-    }
-
-    function decimals() public pure override returns (uint8) {
-        return 6;
-    }
-
-    function mint(address to, uint256 amount) public {
-        _mint(to, amount);
     }
 }

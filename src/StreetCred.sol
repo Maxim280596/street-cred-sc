@@ -3,16 +3,34 @@ pragma solidity 0.8.27;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
+// enum TokenType {
+//     RespectSeeker,
+//     StreetHustler,
+//     UrbanLegend,
+
+// }
+
 enum TokenType {
-    RespectSeeker,
-    StreetHustler,
-    UrbanLegend
+    level1,
+    level2,
+    level3,
+    level4,
+    level5,
+    level6,
+    level7,
+    level8,
+    level9,
+    level10,
+    level11,
+    level12,
+    level13,
+    level14,
+    level15
 }
 
 struct TokenInfo {

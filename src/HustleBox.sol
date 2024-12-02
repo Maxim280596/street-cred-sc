@@ -1,3 +1,4 @@
+/// SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
 import {StreetCred, TokenType} from "./StreetCred.sol";
@@ -5,13 +6,16 @@ import {HustleMarket} from "./HustleMarket.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 
-contract StreetBox is Ownable {
+contract HustleBox is Ownable, ERC721Holder {
     using SafeERC20 for ERC20;
 
     StreetCred public immutable streetCred;
     HustleMarket public immutable hustleMarket;
     ERC20 public immutable usdToken;
+
+    uint256 public constant JACKPOT_MULTIPLIER = 2;
 
     mapping(uint256 => bool) isActivated;
 
@@ -31,32 +35,33 @@ contract StreetBox is Ownable {
         usdToken = ERC20(HustleMarket(_hustleMarket).usdToken());
     }
 
-    function openBox(uint256 _tokenId) external {
+    function openBox(uint256 tokenId) external {
         address user = msg.sender;
-        require(streetCred.ownerOf(_tokenId) == user, OnlyNftOwner());
-        require(isAvailableToOpen(_tokenId), ActivationNotAllowed());
         require(usdToken.balanceOf(address(this)) >= 1, EmptyBox());
+        require(streetCred.ownerOf(tokenId) == user, OnlyNftOwner());
+        require(isAvailableToOpen(tokenId), ActivationNotAllowed());
 
-        isActivated[_tokenId] = true;
-        uint256 winningsAmount = _calculateWinnings(user, _tokenId);
+        isActivated[tokenId] = true;
+        uint256 winningsAmount = _calculateWinnings(user, tokenId);
+        streetCred.safeTransferFrom(user, address(this), tokenId);
         usdToken.safeTransfer(user, winningsAmount);
 
-        emit BoxOpened(user, _tokenId, winningsAmount);
+        emit BoxOpened(user, tokenId, winningsAmount);
     }
 
-    function isAvailableToOpen(uint256 _tokenId) public view returns (bool) {
-        return !streetCred.isActive(_tokenId) && !isActivated[_tokenId];
+    function isAvailableToOpen(uint256 tokenId) public view returns (bool) {
+        return !streetCred.isActive(tokenId) && !isActivated[tokenId];
     }
 
-    function calculateMaxPrize(uint256 _tokenId) public view returns (uint256) {
-        TokenType tokenType = streetCred.getNftTypeById(_tokenId);
+    function calculateMaxPrize(uint256 tokenId) public view returns (uint256) {
+        TokenType tokenType = streetCred.getNftTypeById(tokenId);
         uint256 nftPrice = hustleMarket.getPrice(tokenType);
-        uint256 maxPrize = nftPrice * 3;
+        uint256 maxPrize = nftPrice * JACKPOT_MULTIPLIER;
         uint256 usdBalance = usdToken.balanceOf(address(this));
         if (usdBalance < maxPrize) {
             return usdBalance;
         }
-        return maxPrize * 3;
+        return maxPrize;
     }
 
     function _calculateWinnings(
