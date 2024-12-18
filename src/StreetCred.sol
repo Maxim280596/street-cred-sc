@@ -8,13 +8,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-// enum TokenType {
-//     RespectSeeker,
-//     StreetHustler,
-//     UrbanLegend,
-
-// }
-
 enum TokenType {
     level1,
     level2,
@@ -83,6 +76,14 @@ contract StreetCred is Ownable, ERC721 {
 
     event SetHustleMarket(address hustleMarket);
     event SetBaseURI(string baseURI);
+    event StreetSoulMinted(
+        uint256 tokenID,
+        TokenType tokenType,
+        address homie1,
+        address homie2,
+        uint256 tokenId1,
+        uint256 tokenId2
+    );
 
     constructor(
         address _owner
@@ -165,6 +166,7 @@ contract StreetCred is Ownable, ERC721 {
         );
         ownerMintCount[_type]++;
         _safeMint(hustleMarketCached, tokenId);
+        emit StreetSoulMinted(tokenId, _type, address(0), address(0), 0, 0);
     }
 
     function setHustleMarket(address _hustleMarket) external onlyOwner {
@@ -294,6 +296,14 @@ contract StreetCred is Ownable, ERC721 {
         );
 
         _safeMint(hustleMarket, tokenId);
+        emit StreetSoulMinted(
+            tokenId,
+            type1,
+            homie1,
+            homie2,
+            tokenId1,
+            tokenId2
+        );
     }
 
     function _baseURI() internal view override returns (string memory) {

@@ -47,6 +47,10 @@ contract HustleBox is Ownable, ERC721Holder {
         emit BoxOpened(user, tokenId, winningsAmount);
     }
 
+    function emergencyWithdraw() external onlyOwner {
+        usdToken.safeTransfer(owner(), usdToken.balanceOf(address(this)));
+    }
+
     function isAvailableToOpen(uint256 tokenId) public view returns (bool) {
         return !streetCred.isActive(tokenId) && !isActivated[tokenId];
     }
@@ -54,7 +58,6 @@ contract HustleBox is Ownable, ERC721Holder {
     function calculateMaxPrize(uint256 tokenId) public view returns (uint256) {
         TokenType tokenType = streetCred.getNftTypeById(tokenId);
         uint256 nftPrice = hustleMarket.getPrice(tokenType);
-        // uint256 maxPrize = nftPrice;
         uint256 usdBalance = usdToken.balanceOf(address(this));
         if (usdBalance < nftPrice) {
             return usdBalance;

@@ -65,7 +65,8 @@ contract HustleMarket is Ownable {
         address indexed homie1,
         address indexed homie2,
         TokenType tokenType,
-        uint256 tokenId
+        uint256 tokenId,
+        uint256 price
     );
 
     event AddToUsersQueue(address user, TokenType tokenType);
@@ -84,12 +85,9 @@ contract HustleMarket is Ownable {
         streetCred = StreetCred(_streetCred);
         usdToken = ERC20(_usdToken);
 
-        // require(
-        //     _prices.length - 1 == uint256(type(TokenType).max), /// double check this line in tests
-        //     InvalidTokenPrice()
-        // );
         for (uint8 i = 0; i < _prices.length; i++) {
             tokenPrice[TokenType(i)] = _prices[i];
+            emit AddNewNftType(TokenType(i), _prices[i]);
         }
     }
 
@@ -105,13 +103,15 @@ contract HustleMarket is Ownable {
         require(price > 0, InvalidTokenPrice());
         require(tokenPrice[tokenType] == 0, AlreadySetted());
         tokenPrice[tokenType] = price;
+        emit AddNewNftType(tokenType, price);
     }
 
     function sell(uint256 tokenId) internal {
         TokenType tokenType = streetCred.getNftTypeById(tokenId);
-        require(tokenPrice[tokenType] > 0, InvalidTokenType());
+        uint256 price = tokenPrice[tokenType];
+        require(price > 0, InvalidTokenType());
         (address homie1, address homie2) = _getHomies(tokenId);
-        emit Sell(homie1, homie2, tokenType, tokenId);
+        emit Sell(homie1, homie2, tokenType, tokenId, price);
         if (usersQueue[tokenType].length() > 0) {
             _sellToQueueOfUsers(tokenType, tokenId);
         } else {
@@ -127,41 +127,6 @@ contract HustleMarket is Ownable {
         } else {
             _queueUp(tokenType);
         }
-        // require(queues[tokenType].length() > 0, EmptyQueue());
-
-        // uint256 price = tokenPrice[tokenType];
-        // address user = msg.sender;
-
-        // _setUpRef(user, ref);
-
-        // uint256 tokenId = queues[tokenType].at(0);
-        // queues[tokenType].remove(tokenId);
-
-        // (
-        //     uint256 homieFee,
-        //     uint256 projectFee,
-        //     uint256 refFee,
-        //     uint256 lotteryFee
-        // ) = _calculateFees(tokenType);
-
-        // (address homie1, address homie2) = _getHomies(tokenId);
-        // users[homie1].earnedInGame += homieFee;
-        // users[homie2].earnedInGame += homieFee;
-        // address referrer = users[user].ref;
-        // users[referrer].refEarnings += refFee;
-
-        // users[user].spentInGame += price;
-        // totalUsdInGame += price;
-
-        // usdToken.safeTransferFrom(user, address(this), price);
-        // usdToken.safeTransfer(owner(), projectFee);
-        // usdToken.safeTransfer(homie1, homieFee);
-        // usdToken.safeTransfer(homie2, homieFee);
-        // usdToken.safeTransfer(referrer, refFee);
-        // usdToken.safeTransfer(lottery, lotteryFee);
-
-        // streetCred.safeTransferFrom(address(this), user, tokenId);
-        // emit Buy(user, tokenType, tokenId, price, homie1, homie2);
     }
 
     function _queueUp(TokenType tokenType) internal {
@@ -184,6 +149,7 @@ contract HustleMarket is Ownable {
     ) internal {
         uint256 price = tokenPrice[tokenType];
         address user = usersQueue[tokenType].at(0);
+
         usersQueue[tokenType].remove(user);
 
         (
@@ -216,6 +182,11 @@ contract HustleMarket is Ownable {
 
         uint256 tokenId = queues[tokenType].at(0);
         queues[tokenType].remove(tokenId);
+        {}
+
+        /////   [1,2,3,4,]
+        //// remove 0 = [4,2,3]
+        /// add 4
 
         (
             uint256 homieFee,
